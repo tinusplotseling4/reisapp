@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Expeditie Blomsma 2026 v1.2</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🇳🇴 Expeditie Blomsma 2026</h1>
+  <p>Totaalroute + dagroutes in Google Maps • hoogtepunten met sterren • offline routeboek</p>
+</header>
+<nav>
+  <button onclick="showTab('map')">🗺️ Totaalroute</button>
+  <button onclick="showTab('days')">🚐 Dagroutes</button>
+  <button onclick="showTab('lotte')">👧 Lotte</button>
+</nav>
+<main>
+<section id="map" class="tab active">
+  <div class="card hero">
+    <h2>Totaalroute</h2>
+    <p>Gebruik deze als globale route. Google Maps heeft een limiet op het aantal tussenpunten, daarom zijn de dagroutes hieronder belangrijker voor onderweg.</p>
+    <a class="biglink" target="_blank" id="totalMap">Open totaalroute in Google Maps</a>
+  </div>
+  <div id="summary"></div>
+</section>
+
+<section id="days" class="tab">
+  <h2>Dagroutes / etappes</h2>
+  <p class="muted">Elke etappe heeft een Google Maps-route en losse pins voor bezienswaardigheden. Overnachtingen laat ik bewust open.</p>
+  <div id="stageList"></div>
+</section>
+
+<section id="lotte" class="tab">
+  <div class="card">
+    <h2>👧 Lotte's Noorwegenpaspoort</h2>
+    <p>Uitgebreidere lijst komt in v1.3; deze blijft lokaal opgeslagen.</p>
+    <div id="lotteList"></div>
+  </div>
+</section>
+</main>
+<script src="data/stages.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

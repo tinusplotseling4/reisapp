@@ -1,0 +1,1 @@
+Expeditie Blomsma v1.2\n\nPak de ZIP uit en open index.html. Deze versie heeft totaalroute, dagroutes en Google Maps-pins voor bezienswaardigheden met sterren.\n
