@@ -4,20 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Expeditie Blomsma 2026</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <main class="app-shell">
   <header class="app-header">
     <div>
-      <p class="eyebrow">Noorwegenroute 2026</p>
-      <h1>Expeditie Blomsma</h1>
+      <h1>Camperreis door Noorwegen 2026</h1>
     </div>
     <nav class="app-nav">
       <button onclick="showTab('map')">Dashboard</button>
+      <button onclick="openTotalRoute()">Totaalroute</button>
       <button onclick="showTab('days')">Dagroutes</button>
       <button onclick="showTab('lotte')">Lotte</button>
+      <button id="adminNavButton" onclick="showTab('admin')">Beheer</button>
     </nav>
+    <div id="themeSlot"></div>
   </header>
 
   <section id="map" class="tab active">
@@ -33,6 +36,23 @@
     <div id="stageList"></div>
   </section>
 
+  <section id="total" class="tab">
+    <div class="section-head total-head">
+      <div>
+        <p class="eyebrow">Live routebeeld</p>
+        <h2>Totaalroute</h2>
+        <p class="muted" id="routeStatus">Route wordt geladen...</p>
+      </div>
+    </div>
+    <div id="totalRouteMap" class="total-route-map" aria-label="Totaalroute kaart"></div>
+    <div class="route-foot">
+      <span><b class="legend-line done"></b> Gereden</span>
+      <span><b class="legend-line today"></b> Vandaag</span>
+      <span><b class="legend-line planned"></b> Gepland</span>
+      <span class="muted">GPS wordt elke 5 minuten ververst zolang deze pagina open is.</span>
+    </div>
+  </section>
+
   <section id="lotte" class="tab">
     <div class="card">
       <p class="eyebrow">Voor Lotte</p>
@@ -41,9 +61,21 @@
       <div id="lotteList"></div>
     </div>
   </section>
+
+  <section id="admin" class="tab">
+    <div class="section-head">
+      <p class="eyebrow">God mode</p>
+      <h2>Beheer</h2>
+      <p class="muted">Wijs rollen toe per reis. Vandaag volger, volgende reis gewoon medereiziger. Geen probleem.</p>
+    </div>
+    <div id="adminPanel"></div>
+  </section>
 </main>
 
 <script src="data/stages.js"></script>
+<script src="data/app-config.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="app.js"></script>
 </body>
 </html>

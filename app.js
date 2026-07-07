@@ -1,21 +1,533 @@
 const ROLES = {
+  admin: "Administrator",
   leader: "Reisleider",
-  traveler: "Reiziger",
+  traveler: "Medereiziger",
   follower: "Volger",
 };
 
-let currentRole = localStorage.getItem("reisapp_role") || "leader";
-let userName = localStorage.getItem("reisapp_user_name") || "Jeroen";
+const DEFAULT_MEMBERS = [
+  { id: "jeroen", name: "Jeroen", role: "admin" },
+  { id: "moeder", name: "Mam", role: "follower" },
+  { id: "lotte", name: "Lotte", role: "traveler" },
+];
+
+const TRIP_TITLE = "Camperreis door Noorwegen 2026";
+
+let supabaseClient = null;
+let authReady = false;
+let authSession = null;
+let authUser = null;
+let authMessage = "";
+let remoteTrip = null;
+let remoteMembers = null;
+let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
+let themeMode = localStorage.getItem("reisapp_theme") || "dark";
 let activeStage = Number(localStorage.getItem("reisapp_active_stage") || 0);
 let driving = localStorage.getItem("reisapp_driving") === "true";
+let totalRouteMap;
+let totalRouteBounds;
+let livePositionMarker;
+let liveTrackLine;
+let locationTimer;
+let diaryDraft = {
+  stageIndex: null,
+  open: false,
+  mode: "",
+  note: "",
+  photos: [],
+  audioData: "",
+  transcript: "",
+  recording: false,
+};
+let diaryRecorder;
+let diaryRecorderChunks = [];
+let diaryRecognition;
+
+function getConfig() {
+  return window.REISAPP_CONFIG || {};
+}
+
+function initSupabaseClient() {
+  const config = getConfig();
+  if (!window.supabase || !config.supabaseUrl || !config.supabaseAnonKey) return;
+  supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+}
+
+function getDefaultTripSlug() {
+  return getConfig().defaultTripSlug || "noorwegen-2026";
+}
+
+function getUserDisplayName(user) {
+  return (
+    user?.user_metadata?.display_name ||
+    user?.email?.split("@")[0] ||
+    "Reiziger"
+  );
+}
+
+function isCloudMode() {
+  return Boolean(supabaseClient);
+}
+
+function getMembers() {
+  if (remoteMembers && remoteMembers.length) {
+    return remoteMembers.map((member) => ({
+      id: member.user_id || member.id,
+      memberId: member.id,
+      name: member.display_name,
+      role: member.role,
+      email: member.invited_email || "",
+    }));
+  }
+
+  const saved = JSON.parse(localStorage.getItem("reisapp_members") || "null");
+  if (saved && saved.length) return saved;
+  localStorage.setItem("reisapp_members", JSON.stringify(DEFAULT_MEMBERS));
+  return DEFAULT_MEMBERS;
+}
+
+function saveMembers(members) {
+  if (isCloudMode()) return;
+  localStorage.setItem("reisapp_members", JSON.stringify(members));
+}
+
+function getCurrentUser() {
+  const members = getMembers();
+  if (authUser) {
+    return (
+      members.find((member) => member.id === authUser.id) || {
+        id: authUser.id,
+        name: getUserDisplayName(authUser),
+        role: "follower",
+      }
+    );
+  }
+  return members.find((member) => member.id === currentUserId) || members[0];
+}
+
+function getCurrentRole() {
+  return getCurrentUser().role;
+}
+
+function setCurrentUser(id) {
+  if (isCloudMode()) return;
+  currentUserId = id;
+  localStorage.setItem("reisapp_current_user", id);
+  render();
+}
+
+async function addMember() {
+  const name = window.prompt("Naam van de reiziger?");
+  if (!name || !name.trim()) return;
+
+  if (isCloudMode() && remoteTrip) {
+    const email = window.prompt("E-mailadres voor uitnodiging? Dit mag leeg blijven.");
+    const { error } = await supabaseClient.from("trip_members").insert({
+      trip_id: remoteTrip.id,
+      display_name: name.trim(),
+      invited_email: email && email.trim() ? email.trim() : null,
+      role: "follower",
+    });
+
+    if (error) {
+      authMessage = error.message;
+    } else {
+      authMessage = `${name.trim()} is toegevoegd als volger.`;
+      await loadRemoteState();
+    }
+    render();
+    return;
+  }
+
+  const members = getMembers();
+  const id = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || `lid-${Date.now()}`;
+
+  members.push({ id: `${id}-${Date.now()}`, name: name.trim(), role: "follower" });
+  saveMembers(members);
+  render();
+}
+
+async function updateMemberRole(id, role) {
+  if (isCloudMode()) {
+    const member = getMembers().find((item) => item.id === id || item.memberId === id);
+    if (!member) return;
+    const { error } = await supabaseClient.from("trip_members").update({ role }).eq("id", member.memberId);
+    authMessage = error ? error.message : "Rol bijgewerkt.";
+    await loadRemoteState();
+    render();
+    return;
+  }
+
+  const members = getMembers().map((member) => (member.id === id ? { ...member, role } : member));
+  saveMembers(members);
+  render();
+}
+
+async function updateMemberName(id, name) {
+  if (isCloudMode()) {
+    const member = getMembers().find((item) => item.id === id || item.memberId === id);
+    if (!member) return;
+    const { error } = await supabaseClient.from("trip_members").update({ display_name: name }).eq("id", member.memberId);
+    authMessage = error ? error.message : "Naam bijgewerkt.";
+    await loadRemoteState();
+    render();
+    return;
+  }
+
+  const members = getMembers().map((member) => (member.id === id ? { ...member, name } : member));
+  saveMembers(members);
+  render();
+}
+
+function applyTheme() {
+  document.documentElement.dataset.themeMode = themeMode;
+  const prefersLight = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches;
+  const resolved = themeMode === "system" ? (prefersLight ? "light" : "dark") : themeMode;
+  document.documentElement.dataset.theme = resolved;
+}
+
+function setThemeMode(mode) {
+  themeMode = mode;
+  localStorage.setItem("reisapp_theme", mode);
+  applyTheme();
+  render();
+}
+
+function renderThemeControl() {
+  return `
+    <label class="theme-control">
+      <span>Thema</span>
+      <select onchange="setThemeMode(this.value)">
+        <option value="dark" ${themeMode === "dark" ? "selected" : ""}>Donker</option>
+        <option value="light" ${themeMode === "light" ? "selected" : ""}>Licht</option>
+        <option value="system" ${themeMode === "system" ? "selected" : ""}>Volgens apparaat</option>
+      </select>
+    </label>
+  `;
+}
+
+if (window.matchMedia) {
+  window.matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
+    if (themeMode === "system") applyTheme();
+  });
+}
+
+applyTheme();
+
+async function initAuth() {
+  initSupabaseClient();
+  if (!supabaseClient) {
+    authReady = true;
+    render();
+    return;
+  }
+
+  const { data, error } = await supabaseClient.auth.getSession();
+  if (error) authMessage = error.message;
+  authSession = data?.session || null;
+  authUser = authSession?.user || null;
+
+  supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    authSession = session;
+    authUser = session?.user || null;
+    if (authUser) {
+      await loadRemoteState();
+    } else {
+      remoteTrip = null;
+      remoteMembers = null;
+      render();
+    }
+  });
+
+  if (authUser) await loadRemoteState();
+  authReady = true;
+  render();
+}
+
+async function signInWithPassword(event) {
+  event.preventDefault();
+  const email = document.getElementById("authEmail")?.value.trim();
+  const password = document.getElementById("authPassword")?.value;
+  if (!email || !password) return;
+
+  authMessage = "Bezig met inloggen...";
+  render();
+
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  authMessage = error ? error.message : "Ingelogd.";
+  if (!error) await loadRemoteState();
+  render();
+}
+
+async function signUpWithPassword() {
+  const name = document.getElementById("authName")?.value.trim();
+  const email = document.getElementById("authEmail")?.value.trim();
+  const password = document.getElementById("authPassword")?.value;
+  if (!email || !password) return;
+
+  authMessage = "Account wordt aangemaakt...";
+  render();
+
+  const { data, error } = await supabaseClient.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        display_name: name || email.split("@")[0],
+      },
+    },
+  });
+
+  if (error) {
+    authMessage = error.message;
+  } else if (data.session) {
+    authMessage = "Account aangemaakt en ingelogd.";
+    await loadRemoteState();
+  } else {
+    authMessage = "Account aangemaakt. Check je e-mail om je login te bevestigen.";
+  }
+  render();
+}
+
+async function signOut() {
+  if (!supabaseClient) return;
+  await supabaseClient.auth.signOut();
+  authMessage = "Uitgelogd.";
+  render();
+}
+
+async function loadRemoteState() {
+  if (!supabaseClient || !authUser) return;
+
+  const displayName = getUserDisplayName(authUser);
+  await supabaseClient.from("profiles").upsert({
+    id: authUser.id,
+    display_name: displayName,
+  });
+
+  const slug = getDefaultTripSlug();
+  let { data: trip, error: tripError } = await supabaseClient
+    .from("trips")
+    .select("*")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (!trip && !tripError) {
+    const created = await supabaseClient
+      .from("trips")
+      .insert({
+        slug,
+        title: TRIP_TITLE,
+        owner_id: authUser.id,
+      })
+      .select("*")
+      .single();
+
+    trip = created.data;
+    tripError = created.error;
+  }
+
+  if (tripError) {
+    authMessage = tripError.message;
+    return;
+  }
+
+  remoteTrip = trip;
+
+  const { data: existingMember } = await supabaseClient
+    .from("trip_members")
+    .select("*")
+    .eq("trip_id", remoteTrip.id)
+    .eq("user_id", authUser.id)
+    .maybeSingle();
+
+  if (!existingMember) {
+    const { error } = await supabaseClient.from("trip_members").insert({
+      trip_id: remoteTrip.id,
+      user_id: authUser.id,
+      display_name: displayName,
+      invited_email: authUser.email,
+      role: remoteTrip.owner_id === authUser.id ? "admin" : "follower",
+      joined_at: new Date().toISOString(),
+    });
+    if (error) authMessage = error.message;
+  }
+
+  const { data: members, error: membersError } = await supabaseClient
+    .from("trip_members")
+    .select("*")
+    .eq("trip_id", remoteTrip.id)
+    .order("created_at", { ascending: true });
+
+  if (membersError) {
+    authMessage = membersError.message;
+    return;
+  }
+
+  remoteMembers = members || [];
+  currentUserId = authUser.id;
+}
+
+function renderAuthGate() {
+  return `
+    <section class="auth-gate">
+      <div>
+        <p class="eyebrow">Login</p>
+        <h2>Noorwegen 2026</h2>
+        <p class="muted">Log in om reisrollen, dagboek, media en straks GPS veilig te synchroniseren.</p>
+      </div>
+
+      <form class="auth-form" onsubmit="signInWithPassword(event)">
+        <label>
+          Naam
+          <input id="authName" autocomplete="name" placeholder="Jeroen">
+        </label>
+        <label>
+          E-mail
+          <input id="authEmail" type="email" autocomplete="email" required placeholder="naam@example.com">
+        </label>
+        <label>
+          Wachtwoord
+          <input id="authPassword" type="password" autocomplete="current-password" required placeholder="Minimaal 6 tekens">
+        </label>
+        <div class="auth-actions">
+          <button class="linkbtn mapsbtn" type="submit">Inloggen</button>
+          <button class="linkbtn" type="button" onclick="signUpWithPassword()">Account maken</button>
+        </div>
+        ${authMessage ? `<p class="muted">${authMessage}</p>` : ""}
+      </form>
+    </section>
+  `;
+}
+
+const ROUTE_STAGES = [
+  [
+    [52.257, 4.557],
+    [52.977, 6.481],
+    [53.551, 9.993],
+    [55.491, 9.472],
+    [55.336, 10.982],
+    [55.571, 12.859],
+    [55.605, 13.003],
+  ],
+  [
+    [55.605, 13.003],
+    [57.709, 11.975],
+    [59.914, 10.752],
+    [59.744, 10.205],
+    [60.533, 8.207],
+    [60.511, 7.865],
+  ],
+  [
+    [60.533, 8.207],
+    [60.511, 7.865],
+    [60.398, 7.356],
+    [60.426, 7.251],
+    [60.467, 7.071],
+  ],
+  [
+    [60.467, 7.071],
+    [60.475, 6.829],
+    [60.572, 6.737],
+    [60.629, 6.414],
+    [60.861, 7.112],
+    [60.908, 7.212],
+    [60.906, 7.189],
+  ],
+  [
+    [60.906, 7.189],
+    [60.975, 7.444],
+    [61.047, 7.812],
+    [61.229, 7.101],
+    [61.837, 6.806],
+    [61.872, 6.848],
+  ],
+  [
+    [61.872, 6.848],
+    [61.837, 6.806],
+    [61.904, 6.722],
+    [62.049, 7.27],
+    [62.089, 7.231],
+    [62.101, 7.205],
+    [62.112, 7.166],
+  ],
+  [
+    [62.101, 7.205],
+    [62.298, 7.262],
+    [62.331, 7.468],
+    [62.454, 7.663],
+    [62.567, 7.774],
+    [62.567, 7.687],
+  ],
+  [
+    [62.567, 7.687],
+    [62.737, 7.16],
+    [62.906, 6.914],
+    [63.016, 7.354],
+    [63.018, 7.374],
+    [63.111, 7.732],
+  ],
+  [
+    [63.111, 7.732],
+    [62.567, 7.687],
+    [62.075, 9.126],
+    [61.837, 8.568],
+    [61.5, 8.4],
+  ],
+  [
+    [61.5, 8.4],
+    [60.986, 9.232],
+    [61.115, 10.466],
+    [60.19, 11.997],
+    [59.379, 13.504],
+  ],
+  [
+    [59.379, 13.504],
+    [57.709, 11.975],
+    [55.605, 13.003],
+    [55.571, 12.859],
+    [55.336, 10.982],
+    [53.551, 9.993],
+    [52.368, 4.904],
+    [52.257, 4.557],
+  ],
+];
 
 function showTab(id) {
+  if (isCloudMode() && !authUser) {
+    id = "map";
+  }
+  if (id === "admin" && getCurrentRole() !== "admin") {
+    showTab("map");
+    return;
+  }
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
   document.getElementById(id).classList.add("active");
+  if (id === "total") initTotalRoute();
 }
 
 function canControlRoute() {
-  return currentRole === "leader";
+  const role = getCurrentRole();
+  return role === "admin" || role === "leader";
+}
+
+function canSeeAdminFiles() {
+  const role = getCurrentRole();
+  return role === "admin" || role === "leader";
+}
+
+function canEditDiary() {
+  const role = getCurrentRole();
+  return role === "admin" || role === "leader" || role === "traveler";
+}
+
+function canMarkVisited() {
+  const role = getCurrentRole();
+  return role === "admin" || role === "leader" || role === "traveler";
 }
 
 function stars(n) {
@@ -35,20 +547,329 @@ function toggleDriving() {
 function selectStage(index) {
   activeStage = index;
   localStorage.setItem("reisapp_active_stage", String(index));
+  resetTotalRoute();
   render();
 }
 
 function openStage(index) {
   activeStage = index;
   localStorage.setItem("reisapp_active_stage", String(index));
+  resetTotalRoute();
   showTab("days");
   render();
 }
 
 function toggleVisited(key) {
+  if (!canMarkVisited()) return;
   const current = localStorage.getItem(key) === "true";
   localStorage.setItem(key, String(!current));
   render();
+}
+
+function getStageDiaryKey(index) {
+  return `reisapp_stage_diary_${index}`;
+}
+
+function getStageDiary(index) {
+  return JSON.parse(localStorage.getItem(getStageDiaryKey(index)) || "[]");
+}
+
+function saveStageDiary(index, entries) {
+  localStorage.setItem(getStageDiaryKey(index), JSON.stringify(entries));
+}
+
+function resetDiaryDraft(index = activeStage) {
+  diaryDraft = {
+    stageIndex: index,
+    open: true,
+    mode: "",
+    note: "",
+    photos: [],
+    audioData: "",
+    transcript: "",
+    recording: false,
+  };
+}
+
+function openDiaryComposer(index) {
+  if (!canEditDiary()) return;
+  resetDiaryDraft(index);
+  renderStages();
+}
+
+function closeDiaryComposer() {
+  if (diaryDraft.recording) stopDiaryRecording();
+  diaryDraft.open = false;
+  renderStages();
+}
+
+function setDiaryMode(mode) {
+  diaryDraft.mode = mode;
+  renderStages();
+}
+
+function updateDiaryDraftNote(value) {
+  diaryDraft.note = value;
+}
+
+function addDiaryEntry(index, entry) {
+  const entries = getStageDiary(index);
+  entries.unshift({
+    id: Date.now(),
+    created: new Date().toLocaleString("nl-NL", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }),
+    note: entry.note || "",
+    photos: entry.photos || [],
+    audioData: entry.audioData || "",
+    transcript: entry.transcript || "",
+  });
+  saveStageDiary(index, entries);
+}
+
+function updateDiaryEntry(stageIndex, entryId, value) {
+  const entries = getStageDiary(stageIndex).map((entry) =>
+    entry.id === entryId ? { ...entry, note: value } : entry
+  );
+  saveStageDiary(stageIndex, entries);
+}
+
+function handleDiaryPhotos(input) {
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+
+  Promise.all(
+    files.map(
+      (file) =>
+        new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        })
+    )
+  ).then((photos) => {
+    diaryDraft.photos = diaryDraft.photos.concat(photos);
+    renderStages();
+  });
+}
+
+function removeDiaryPhoto(index) {
+  diaryDraft.photos = diaryDraft.photos.filter((_, photoIndex) => photoIndex !== index);
+  renderStages();
+}
+
+function saveDiaryDraft() {
+  const note = diaryDraft.note.trim();
+  const transcript = diaryDraft.transcript.trim();
+  const hasContent = note || transcript || diaryDraft.photos.length || diaryDraft.audioData;
+
+  if (!hasContent) return;
+
+  addDiaryEntry(diaryDraft.stageIndex, {
+    note,
+    photos: diaryDraft.photos,
+    audioData: diaryDraft.audioData,
+    transcript,
+  });
+  resetDiaryDraft(diaryDraft.stageIndex);
+  renderStages();
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.readAsDataURL(blob);
+  });
+}
+
+function startSpeechRecognition() {
+  const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!Recognition) return;
+
+  diaryRecognition = new Recognition();
+  diaryRecognition.lang = "nl-NL";
+  diaryRecognition.continuous = true;
+  diaryRecognition.interimResults = true;
+  diaryRecognition.onresult = (event) => {
+    let transcript = "";
+    for (let index = 0; index < event.results.length; index++) {
+      transcript += event.results[index][0].transcript;
+    }
+    diaryDraft.transcript = transcript.trim();
+    renderStages();
+  };
+  diaryRecognition.start();
+}
+
+async function startDiaryRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    diaryDraft.transcript = "Microfoon is niet beschikbaar in deze browser.";
+    renderStages();
+    return;
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  diaryRecorderChunks = [];
+  diaryRecorder = new MediaRecorder(stream);
+  diaryDraft.recording = true;
+
+  diaryRecorder.ondataavailable = (event) => {
+    if (event.data.size) diaryRecorderChunks.push(event.data);
+  };
+
+  diaryRecorder.onstop = async () => {
+    stream.getTracks().forEach((track) => track.stop());
+    const blob = new Blob(diaryRecorderChunks, { type: diaryRecorder.mimeType || "audio/webm" });
+    diaryDraft.audioData = await blobToDataUrl(blob);
+    diaryDraft.recording = false;
+    renderStages();
+  };
+
+  startSpeechRecognition();
+  diaryRecorder.start();
+  renderStages();
+}
+
+function stopDiaryRecording() {
+  if (diaryRecognition) {
+    diaryRecognition.stop();
+    diaryRecognition = null;
+  }
+  if (diaryRecorder && diaryRecorder.state !== "inactive") {
+    diaryRecorder.stop();
+  }
+}
+
+function renderDiaryComposer(stageIndex) {
+  if (!diaryDraft.open || diaryDraft.stageIndex !== stageIndex) return "";
+
+  return `
+    <div class="diary-composer">
+      <div class="diary-options">
+        <button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="setDiaryMode('camera')">Foto maken</button>
+        <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="setDiaryMode('photos')">Foto's kiezen</button>
+        <button class="linkbtn ${diaryDraft.mode === "text" ? "primary" : ""}" onclick="setDiaryMode('text')">Tekst</button>
+        <button class="linkbtn ${diaryDraft.mode === "voice" ? "primary" : ""}" onclick="setDiaryMode('voice')">Microfoon</button>
+      </div>
+
+      ${
+        diaryDraft.mode === "camera"
+          ? `<label class="diary-upload">Camera openen
+              <input type="file" accept="image/*" capture="environment" onchange="handleDiaryPhotos(this)">
+            </label>`
+          : ""
+      }
+
+      ${
+        diaryDraft.mode === "photos"
+          ? `<label class="diary-upload">Foto's kiezen
+              <input type="file" accept="image/*" multiple onchange="handleDiaryPhotos(this)">
+            </label>`
+          : ""
+      }
+
+      ${
+        diaryDraft.mode === "text" || diaryDraft.mode === "voice"
+          ? `<textarea class="diary-compose-text" oninput="updateDiaryDraftNote(this.value)" placeholder="Wat willen we later terugvinden?">${diaryDraft.note}</textarea>`
+          : ""
+      }
+
+      ${
+        diaryDraft.photos.length
+          ? `<div class="diary-photo-grid">
+              ${diaryDraft.photos
+                .map(
+                  (photo, index) => `
+                    <div class="diary-photo-draft">
+                      <img src="${photo}" alt="Dagboekfoto">
+                      <button class="linkbtn stopbtn" onclick="removeDiaryPhoto(${index})">Verwijderen</button>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>`
+          : ""
+      }
+
+      ${
+        diaryDraft.mode === "voice"
+          ? `<div class="voice-tools">
+              <button class="linkbtn ${diaryDraft.recording ? "stopbtn" : "startbtn"}" onclick="${diaryDraft.recording ? "stopDiaryRecording()" : "startDiaryRecording()"}">
+                ${diaryDraft.recording ? "Stop opname" : "Inspreken"}
+              </button>
+              <p class="muted">${diaryDraft.transcript || "Ingesproken tekst verschijnt hier als de browser spraakherkenning ondersteunt."}</p>
+              ${diaryDraft.audioData ? `<p class="muted">Audiobestand bewaard voor beheer.</p>` : ""}
+            </div>`
+          : ""
+      }
+
+      <div class="diary-compose-actions">
+        <button class="linkbtn mapsbtn" onclick="saveDiaryDraft()">Toevoegen</button>
+        <button class="linkbtn" onclick="closeDiaryComposer()">Sluiten</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderAdminPanel() {
+  const members = getMembers();
+  if (!document.getElementById("adminPanel")) return;
+
+  document.getElementById("adminPanel").innerHTML = `
+    <section class="admin-panel">
+      <div class="admin-head">
+        <div>
+          <p class="eyebrow">Reisrollen</p>
+          <h2>Noorwegen 2026</h2>
+          <p class="muted">Rollen gelden voor deze reis. Iemand kan later bij een andere reis gewoon een andere rol krijgen.</p>
+        </div>
+        <button class="linkbtn mapsbtn" onclick="addMember()">Lid toevoegen</button>
+      </div>
+
+      <div class="member-list">
+        ${members
+          .map(
+            (member) => `
+              <div class="member-row">
+                <input value="${member.name}" onchange="updateMemberName('${member.id}', this.value)">
+                <select onchange="updateMemberRole('${member.id}', this.value)">
+                  ${Object.entries(ROLES)
+                    .map(([key, label]) => `<option value="${key}" ${member.role === key ? "selected" : ""}>${label}</option>`)
+                    .join("")}
+                </select>
+                <span class="member-current">${member.id === currentUserId ? "Actief" : member.email || ""}</span>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+
+      <div class="role-matrix">
+        <h3>Rechten</h3>
+        <p><b>Administrator:</b> alles beheren, rollen uitdelen, audio zien en route sturen.</p>
+        <p><b>Reisleider:</b> etappes starten/stoppen, route sturen en admin-bestanden zien.</p>
+        <p><b>Medereiziger:</b> dagboek vullen, foto's/audio toevoegen en hoogtepunten afvinken.</p>
+        <p><b>Volger:</b> meekijken zonder dingen te wijzigen.</p>
+      </div>
+    </section>
+  `;
+}
+
+function renderNavigationForRole() {
+  const adminButton = document.getElementById("adminNavButton");
+  const themeSlot = document.getElementById("themeSlot");
+  const navButtons = document.querySelectorAll(".app-nav button");
+  navButtons.forEach((button) => {
+    button.style.display = isCloudMode() && !authUser ? "none" : "inline-flex";
+  });
+  if (adminButton) {
+    adminButton.style.display = getCurrentRole() === "admin" && (!isCloudMode() || authUser) ? "inline-flex" : "none";
+  }
+  if (themeSlot) themeSlot.innerHTML = renderThemeControl();
 }
 
 function getVisitedCount() {
@@ -80,10 +901,44 @@ function getPhotoCount() {
   return Object.values(data).filter((item) => item.photo).length;
 }
 
+function getDiaryCount() {
+  return STAGES.reduce(
+    (total, _, index) =>
+      total +
+      getStageDiary(index).filter(
+        (entry) => (entry.note || "").trim() || (entry.transcript || "").trim() || (entry.photos || []).length
+      ).length,
+    0
+  );
+}
+
 function getStageStatus(index) {
   if (index < activeStage) return "done";
   if (index === activeStage) return "today";
   return "planned";
+}
+
+function getRoleDashboardText() {
+  const role = getCurrentRole();
+  if (role === "admin") return "Alles beheren, rollen uitdelen, route sturen en dagboekbestanden zien.";
+  if (role === "leader") return "Route sturen, etappes starten en praktische reisacties uitvoeren.";
+  if (role === "traveler") return "Meereizen, hoogtepunten afvinken en dagboeknotities toevoegen.";
+  return "Rustig meekijken met dashboard, route, dagboek en voortgang.";
+}
+
+function renderUserSwitcher() {
+  const current = getCurrentUser();
+
+  return `
+    <section class="role-strip">
+      <div>
+        <p class="eyebrow">Ingelogd als</p>
+        <h2>${current.name}</h2>
+        <p class="muted">${ROLES[current.role]} - ${getRoleDashboardText()}</p>
+      </div>
+      ${isCloudMode() ? `<button class="linkbtn" onclick="signOut()">Uitloggen</button>` : ""}
+    </section>
+  `;
 }
 
 function getTotalMapUrl() {
@@ -107,10 +962,247 @@ function getTotalMapUrl() {
   return "https://www.google.com/maps/dir/" + totalPoints.map(encodeURIComponent).join("/");
 }
 
+function openTotalRoute() {
+  showTab("total");
+}
+
+function getRouteColor(index) {
+  if (index < activeStage) return "#22c55e";
+  if (index === activeStage) return "#174c82";
+  return "#5ab8ff";
+}
+
+function setRouteStatus(message) {
+  const status = document.getElementById("routeStatus");
+  if (status) status.textContent = message;
+}
+
+function centerTotalRoute() {
+  if (totalRouteMap && totalRouteBounds) {
+    totalRouteMap.fitBounds(totalRouteBounds, { padding: [24, 24] });
+  }
+}
+
+function resetTotalRoute() {
+  if (!totalRouteMap) return;
+  totalRouteMap.remove();
+  totalRouteMap = null;
+  totalRouteBounds = null;
+  livePositionMarker = null;
+  liveTrackLine = null;
+
+  if (document.getElementById("total").classList.contains("active")) {
+    setTimeout(initTotalRoute, 0);
+  }
+}
+
+function getFallbackRouteBounds() {
+  return ROUTE_STAGES.flat();
+}
+
+function initTotalRoute() {
+  if (typeof L === "undefined") {
+    setRouteStatus("Kaartbibliotheek kon niet laden. Controleer de internetverbinding.");
+    return;
+  }
+
+  if (!totalRouteMap) {
+    totalRouteMap = L.map("totalRouteMap", {
+      zoomControl: false,
+      scrollWheelZoom: true,
+    });
+
+    L.control.zoom({ position: "bottomright" }).addTo(totalRouteMap);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 19,
+    }).addTo(totalRouteMap);
+
+    renderTotalRoute();
+    restoreLiveTrack();
+  }
+
+  setTimeout(() => totalRouteMap.invalidateSize(), 80);
+  centerTotalRoute();
+}
+
+async function getStageGeometry(points) {
+  const coords = points.map(([lat, lon]) => `${lon},${lat}`).join(";");
+  const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error("Route ophalen mislukt");
+
+  const data = await response.json();
+  if (!data.routes || !data.routes[0]) throw new Error("Geen route gevonden");
+
+  return data.routes[0].geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+}
+
+async function renderTotalRoute() {
+  setRouteStatus("Route wordt opgebouwd uit alle etappes...");
+  const allBounds = [];
+  let usedFallback = false;
+
+  for (let index = 0; index < ROUTE_STAGES.length; index++) {
+    const fallback = ROUTE_STAGES[index];
+    let line = fallback;
+
+    try {
+      line = await getStageGeometry(fallback);
+    } catch (_) {
+      usedFallback = true;
+    }
+
+    L.polyline(line, {
+      color: getRouteColor(index),
+      weight: index === activeStage ? 6 : 4,
+      opacity: index === activeStage ? 0.96 : 0.72,
+      dashArray: index > activeStage ? "10 10" : null,
+    }).addTo(totalRouteMap);
+
+    allBounds.push(...line);
+  }
+
+  ROUTE_STAGES.forEach((points, index) => {
+    const [lat, lon] = points[0];
+    L.circleMarker([lat, lon], {
+      radius: index === activeStage ? 7 : 5,
+      color: "#ffffff",
+      weight: 1,
+      fillColor: getRouteColor(index),
+      fillOpacity: 1,
+    })
+      .bindTooltip(`Dag ${index + 1}`, { direction: "top" })
+      .addTo(totalRouteMap);
+  });
+
+  totalRouteBounds = L.latLngBounds(allBounds.length ? allBounds : getFallbackRouteBounds());
+  centerTotalRoute();
+  setRouteStatus(
+    usedFallback
+      ? "Route geladen. Een deel gebruikt bekende routepunten omdat live routing niet beschikbaar was."
+      : "Route geladen via alle etappes."
+  );
+}
+
+function getSavedTrack() {
+  return JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
+}
+
+function saveTrackPoint(point) {
+  const track = getSavedTrack();
+  track.push(point);
+  localStorage.setItem("reisapp_live_track", JSON.stringify(track.slice(-1200)));
+}
+
+function restoreLiveTrack() {
+  const track = getSavedTrack();
+  if (!track.length || !totalRouteMap) return;
+  drawLivePosition(track[track.length - 1], track);
+}
+
+function drawLivePosition(point, track = getSavedTrack()) {
+  if (!totalRouteMap) return;
+
+  const latLng = [point.lat, point.lon];
+  if (!livePositionMarker) {
+    livePositionMarker = L.circleMarker(latLng, {
+      radius: 8,
+      color: "#ffffff",
+      weight: 2,
+      fillColor: "#fbbf24",
+      fillOpacity: 1,
+    }).addTo(totalRouteMap);
+  } else {
+    livePositionMarker.setLatLng(latLng);
+  }
+
+  const trackLine = track.map((item) => [item.lat, item.lon]);
+  if (!liveTrackLine) {
+    liveTrackLine = L.polyline(trackLine, {
+      color: "#22c55e",
+      weight: 5,
+      opacity: 0.9,
+    }).addTo(totalRouteMap);
+  } else {
+    liveTrackLine.setLatLngs(trackLine);
+  }
+}
+
+function projectHeroPoint(point) {
+  const minLat = 51.4;
+  const maxLat = 64.2;
+  const minLon = 3.2;
+  const maxLon = 14.6;
+  const x = ((point.lon - minLon) / (maxLon - minLon)) * 1000;
+  const y = ((maxLat - point.lat) / (maxLat - minLat)) * 520;
+  return [Math.max(0, Math.min(1000, x)), Math.max(0, Math.min(520, y))];
+}
+
+function renderHeroTrackOverlay() {
+  const track = getSavedTrack();
+  if (!track.length) return "";
+
+  const points = track.map((point) => projectHeroPoint(point).join(",")).join(" ");
+  const last = projectHeroPoint(track[track.length - 1]);
+  const markerClass = driving ? "driving" : "stopped";
+
+  return `
+    <svg class="hero-track-overlay" viewBox="0 0 1000 520" preserveAspectRatio="none" aria-hidden="true">
+      <polyline class="hero-track-line" points="${points}" />
+      <circle class="hero-track-pulse ${markerClass}" cx="${last[0]}" cy="${last[1]}" r="16" />
+      <circle class="hero-track-current ${markerClass}" cx="${last[0]}" cy="${last[1]}" r="9" />
+    </svg>
+  `;
+}
+
+function updateLivePosition() {
+  if (!navigator.geolocation) {
+    setRouteStatus("GPS is niet beschikbaar in deze browser.");
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    setRouteStatus("GPS werkt alleen via https, localhost of een browser die lokale bestanden vertrouwt.");
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const point = {
+        lat: position.coords.latitude,
+        lon: position.coords.longitude,
+        accuracy: Math.round(position.coords.accuracy || 0),
+        time: Date.now(),
+      };
+
+      saveTrackPoint(point);
+      drawLivePosition(point);
+      if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
+      if (document.getElementById("map").classList.contains("active")) {
+        document.getElementById("summary").innerHTML = renderDashboard();
+      }
+      setRouteStatus(`GPS bijgewerkt. Nauwkeurigheid ongeveer ${point.accuracy} meter.`);
+    },
+    () => setRouteStatus("GPS-toegang is geweigerd of niet beschikbaar."),
+    {
+      enableHighAccuracy: true,
+      maximumAge: 240000,
+      timeout: 20000,
+    }
+  );
+}
+
+function startLocationTracking() {
+  updateLivePosition();
+  if (locationTimer) clearInterval(locationTimer);
+  locationTimer = setInterval(updateLivePosition, 300000);
+}
+
 function renderStageDots() {
   return STAGES.map(
     (_, index) => `
-      <button class="hero-dot ${getStageStatus(index)}" onclick="selectStage(${index})" aria-label="Dag ${index + 1}">
+      <button class="hero-dot ${getStageStatus(index)}" onclick="openStage(${index})" aria-label="Dag ${index + 1}">
         ${index + 1}
       </button>
     `
@@ -119,47 +1211,12 @@ function renderStageDots() {
 
 function renderDashboard() {
   const stage = STAGES[activeStage];
-  const totalMapUrl = getTotalMapUrl();
-
   return `
+    ${renderUserSwitcher()}
+
     <section class="trip-hero">
       <div class="hero-map" aria-hidden="true">
-        <svg class="route-overlay" viewBox="0 0 1000 360" preserveAspectRatio="none">
-          <polyline class="route-line route-done" points="95,295 145,250 185,206 230,160 285,120 350,88" />
-          <polyline class="route-line route-today" points="350,88 418,62 492,54 565,68 630,100" />
-          <polyline class="route-line route-planned" points="630,100 688,142 730,190 758,244 790,300 845,318" />
-        </svg>
-        <span class="map-pin pin-start"></span>
-        <span class="map-pin pin-today"></span>
-        <span class="map-pin pin-end"></span>
-      </div>
-
-      <div class="hero-content">
-        <p class="eyebrow">Dag ${activeStage + 1} van ${STAGES.length}</p>
-        <h1>Expeditie <span>Blomsma</span> 2026</h1>
-        <p>Camperreis door Noorwegen</p>
-        <div class="hero-actions">
-          <a class="linkbtn primary" target="_blank" href="${totalMapUrl}">Totaalroute</a>
-          <a class="linkbtn" target="_blank" href="${stage.maps}">Route vandaag</a>
-          <button class="linkbtn" onclick="openStage(${activeStage})">Dagdetails</button>
-        </div>
-      </div>
-
-      <aside class="hero-today-card">
-        <span class="day-badge large">Dag<br>${activeStage + 1}</span>
-        <div>
-          <b>${stage.title}</b>
-          <small>${stage.from} -> ${stage.to}</small>
-          <small>${stage.goal}</small>
-        </div>
-      </aside>
-
-      <div class="hero-route">${renderStageDots()}</div>
-
-      <div class="hero-legend">
-        <span><b class="legend-line done"></b> Geweest</span>
-        <span><b class="legend-line today"></b> Vandaag</span>
-        <span><b class="legend-line planned"></b> Komt nog</span>
+        ${renderHeroTrackOverlay()}
       </div>
     </section>
 
@@ -177,15 +1234,15 @@ function renderDashboard() {
       </div>
 
       <div class="dashcard">
-        <span class="dashicon">Must</span>
-        <span class="dashnum">${getMustSeenCount()}/${getMustSeeCount()}</span>
-        <span class="dashlabel">Have Seen</span>
+        <span class="dashicon">Seen</span>
+        <span class="dashnum">${getMustSeenCount()}</span>
+        <span class="dashlabel">Bezienswaardigheden gezien</span>
       </div>
 
       <div class="dashcard">
-        <span class="dashicon">Foto</span>
-        <span class="dashnum">${getPhotoCount()}</span>
-        <span class="dashlabel">Foto's</span>
+        <span class="dashicon">Dagboek</span>
+        <span class="dashnum">${getDiaryCount()}</span>
+        <span class="dashlabel">Notities</span>
       </div>
     </section>
 
@@ -196,7 +1253,7 @@ function renderDashboard() {
         <div class="stage-list-dashboard">
           ${STAGES.map(
             (item, index) => `
-              <button class="stage-row ${getStageStatus(index)} ${index === activeStage ? "selected" : ""}" onclick="selectStage(${index})">
+              <button class="stage-row ${getStageStatus(index)} ${index === activeStage ? "selected" : ""}" onclick="openStage(${index})">
                 <span class="day-badge">Dag<br>${index + 1}</span>
                 <span class="stage-row-main">
                   <b>${item.title}</b>
@@ -255,10 +1312,20 @@ function renderDashboard() {
 
 function renderStages() {
   const stage = STAGES[activeStage];
+  const diary = getStageDiary(activeStage);
+  const groceryStop = stage.route[Math.max(0, stage.route.length - 2)] || stage.to;
+  const tankStop = stage.route[1] || stage.from;
+  const routeText = stage.route.join(" -> ");
 
   document.getElementById("stageList").innerHTML = `
     <div class="card stage-detail">
-      <button class="linkbtn" onclick="showTab('map')">Terug naar dashboard</button>
+      ${
+        canControlRoute()
+          ? `<button class="linkbtn stage-start-toggle ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving()">
+              ${driving ? "Stop etappe" : "Start etappe"}
+            </button>`
+          : ""
+      }
 
       <p class="eyebrow">${stage.day}</p>
       <h1>${stage.title}</h1>
@@ -267,59 +1334,109 @@ function renderStages() {
         <span class="pill">${stage.km}</span>
         <span class="pill">${stage.time}</span>
         <span class="pill">${stage.goal}</span>
+        <a class="linkbtn mapsbtn" target="_blank" href="${stage.maps}">Open in Google Maps</a>
       </div>
 
-      <div class="actionbar">
-        ${
-          canControlRoute()
-            ? `<button class="linkbtn ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving()">
-                ${driving ? "Stop etappe" : "Start etappe"}
-              </button>`
-            : ""
-        }
-        <a class="linkbtn primary" target="_blank" href="${stage.maps}">Open route</a>
-      </div>
+      <section class="day-route">
+        <p class="eyebrow">Route</p>
+        <h3>${stage.from} -> ${stage.to}</h3>
+        <p>${routeText}</p>
+      </section>
 
-      <h3>Bezienswaardigheden onderweg</h3>
-      ${stage.pois
-        .map((poi, poiIndex) => {
-          const key = poiKey(activeStage, poiIndex);
-          const visited = localStorage.getItem(key) === "true";
+      <div class="day-tools">
+        <section class="day-tool day-diary featured-diary">
+          <p class="eyebrow">Herinneringen</p>
+          <div class="diary-head">
+            <h3>Dagboek</h3>
+            ${
+              canEditDiary()
+                ? `<button class="linkbtn primary diary-add" onclick="openDiaryComposer(${activeStage})">Dagboeknotitie toevoegen</button>`
+                : ""
+            }
+          </div>
+          ${renderDiaryComposer(activeStage)}
+          ${
+            diary.length
+              ? diary
+                  .map(
+                    (entry) => `
+                      <div class="diary-entry">
+                        <span>${entry.created}</span>
+                        <textarea onchange="updateDiaryEntry(${activeStage}, ${entry.id}, this.value)" placeholder="Wat willen we onthouden van deze dag?">${entry.note}</textarea>
+                        ${
+                          entry.transcript
+                            ? `<p class="diary-transcript">${entry.transcript}</p>`
+                            : ""
+                        }
+                        ${
+                          entry.photos && entry.photos.length
+                            ? `<div class="diary-photo-grid saved">
+                                ${entry.photos.map((photo) => `<img src="${photo}" alt="Dagboekfoto">`).join("")}
+                              </div>`
+                            : ""
+                        }
+                        ${
+                          entry.audioData && canSeeAdminFiles()
+                            ? `<audio class="diary-audio" controls src="${entry.audioData}"></audio>`
+                            : ""
+                        }
+                      </div>
+                    `
+                  )
+                  .join("")
+              : `<p class="muted">Nog geen dagboeknotities voor deze dag.</p>`
+          }
+        </section>
 
-          return `
-            <div class="poi ${visited ? "visited" : ""}">
-              <div class="stars">${stars(poi[1])}</div>
-              <div>
-                <b>${poi[0]}</b><br>
-                <span class="muted">${poi[2]}</span>
-              </div>
-              <div>
-                <a target="_blank" class="linkbtn" href="${poi[3]}">Pin</a>
-                <button class="linkbtn visitbtn ${visited ? "done" : ""}" onclick="toggleVisited('${key}')">
-                  ${visited ? "Bezocht" : "Markeer bezocht"}
-                </button>
-              </div>
-            </div>
-          `;
-        })
-        .join("")}
+        <section class="day-tool">
+          <p class="eyebrow">Onderweg</p>
+          <h3>Hoogtepunten</h3>
+          ${stage.pois
+            .map((poi, poiIndex) => {
+              const key = poiKey(activeStage, poiIndex);
+              const visited = localStorage.getItem(key) === "true";
 
-      <div class="detail-grid">
-        <div class="card inner">
-          <h3>Tankadvies</h3>
-          <p>Tank voor vertrek of zodra de tank onder halfvol komt. In Noorwegen liever niet wachten tot het lampje brandt.</p>
-        </div>
+              return `
+                <div class="poi ${visited ? "visited" : ""}">
+                  <div class="stars">${stars(poi[1])}</div>
+                  <div>
+                    <b>${poi[0]}</b><br>
+                    <span class="muted">${poi[2]}</span>
+                  </div>
+                  <div>
+                    <a target="_blank" class="linkbtn" href="${poi[3]}">Pin</a>
+                    ${
+                      canMarkVisited()
+                        ? `<button class="linkbtn visitbtn ${visited ? "done" : ""}" onclick="toggleVisited('${key}')">
+                            ${visited ? "Bezocht" : "Markeer bezocht"}
+                          </button>`
+                        : ""
+                    }
+                  </div>
+                </div>
+              `;
+            })
+            .join("")}
+        </section>
 
-        <div class="card inner">
-          <h3>Campingopties</h3>
-          <p><b>Optie 1:</b> camping dicht bij het eindpunt van de etappe.</p>
-          <p><b>Optie 2:</b> camping 30-60 minuten voor het eindpunt, handig als de dag tegenvalt.</p>
-        </div>
+        <section class="day-tool">
+          <p class="eyebrow">Overnachten</p>
+          <h3>Geadviseerde campingpunten</h3>
+          <p><b>Eerste keuze:</b> zoek rond ${stage.to}, zodat de dag netjes eindigt bij de etappebestemming.</p>
+          <p><b>Backup:</b> zoek 30-60 minuten voor ${stage.to}, handig als rijden, weer of stops uitlopen.</p>
+          <a class="textlink" target="_blank" href="https://www.google.com/maps/search/camping+near+${encodeURIComponent(stage.to)}">Campings bij eindpunt</a>
+        </section>
 
-        <div class="card inner">
-          <h3>Dagboek</h3>
-          <p class="muted">Hier komen straks foto's, notities, voiceberichten en stops van deze dag.</p>
-        </div>
+        <section class="day-tool">
+          <p class="eyebrow">Praktisch</p>
+          <h3>Tanken en boodschappen</h3>
+          <p><b>Tanken:</b> beste moment is bij vertrek of rond ${tankStop}; in Noorwegen liever boven halfvol blijven.</p>
+          <p><b>Boodschappen:</b> plan dit rond ${groceryStop}, voordat je richting kleinere fjord- of bergwegen gaat.</p>
+          <div class="inline-actions">
+            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/gas+station+near+${encodeURIComponent(tankStop)}">Tankstations</a>
+            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/supermarket+near+${encodeURIComponent(groceryStop)}">Supermarkten</a>
+          </div>
+        </section>
       </div>
     </div>
   `;
@@ -432,9 +1549,24 @@ function renderLotte() {
 }
 
 function render() {
+  renderNavigationForRole();
+  if (!authReady) {
+    document.getElementById("summary").innerHTML = `<section class="auth-gate"><p class="muted">App wordt geladen...</p></section>`;
+    return;
+  }
+
+  if (isCloudMode() && !authUser) {
+    document.getElementById("summary").innerHTML = renderAuthGate();
+    document.getElementById("stageList").innerHTML = "";
+    document.getElementById("lotteList").innerHTML = "";
+    document.getElementById("adminPanel").innerHTML = "";
+    return;
+  }
+
   document.getElementById("summary").innerHTML = renderDashboard();
   renderStages();
   renderLotte();
+  renderAdminPanel();
 }
 
-render();
+initAuth();
