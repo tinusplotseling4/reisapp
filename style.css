@@ -580,6 +580,9 @@ button:hover,
 
 .role-switcher select,
 .theme-control select,
+.member-add-row select,
+.member-add-row input,
+.member-add-row textarea,
 .member-row select,
 .member-row input {
   width: 100%;
@@ -590,6 +593,11 @@ button:hover,
   padding: 10px;
   font: inherit;
   font-weight: 800;
+}
+
+.member-add-row textarea {
+  min-height: 86px;
+  resize: vertical;
 }
 
 .role-switcher option,
@@ -972,12 +980,32 @@ button:hover,
   gap: 10px;
 }
 
+.member-add-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(260px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
 .member-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) minmax(180px, 220px) 70px;
+  grid-template-columns: minmax(150px, 1fr) minmax(145px, 180px) minmax(110px, 1fr) auto auto auto auto;
   gap: 10px;
   align-items: center;
   padding: 10px 0;
+}
+
+.admin-message {
+  margin: 0;
+  color: var(--gold);
+  font-weight: 900;
 }
 
 .member-current {
@@ -1112,6 +1140,10 @@ input[type="checkbox"] {
   }
 
   .member-row {
+    grid-template-columns: 1fr;
+  }
+
+  .member-add-row {
     grid-template-columns: 1fr;
   }
 

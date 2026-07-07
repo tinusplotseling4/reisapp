@@ -1,1 +1,3 @@
-Expeditie Blomsma v1.2\n\nPak de ZIP uit en open index.html. Deze versie heeft totaalroute, dagroutes en Google Maps-pins voor bezienswaardigheden met sterren.\n
+Rondreis Noorwegen 2026
+
+Open `index.html` om de reisapp lokaal te bekijken. De app heeft een dashboard, totaalroute, dagroutes, reisrollen, dagboek en Supabase-login.

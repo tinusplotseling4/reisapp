@@ -1,7 +1,13 @@
 const ROLES = {
   admin: "Administrator",
   leader: "Reisleider",
-  traveler: "Medereiziger",
+  traveler: "Reisgenoot",
+  follower: "Volger",
+};
+
+const INVITE_ROLES = {
+  leader: "Reisleider",
+  traveler: "Reisgenoot",
   follower: "Volger",
 };
 
@@ -11,7 +17,7 @@ const DEFAULT_MEMBERS = [
   { id: "lotte", name: "Lotte", role: "traveler" },
 ];
 
-const TRIP_TITLE = "Camperreis door Noorwegen 2026";
+const TRIP_TITLE = "Rondreis Noorwegen 2026";
 
 let supabaseClient = null;
 let authReady = false;
@@ -20,6 +26,8 @@ let authUser = null;
 let authMessage = "";
 let remoteTrip = null;
 let remoteMembers = null;
+let newMemberName = "";
+let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
 let themeMode = localStorage.getItem("reisapp_theme") || "dark";
 let activeStage = Number(localStorage.getItem("reisapp_active_stage") || 0);
@@ -69,6 +77,71 @@ function isCloudMode() {
   return Boolean(supabaseClient);
 }
 
+function createInviteToken() {
+  if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function rememberInviteToken() {
+  const params = new URLSearchParams(window.location.search);
+  const invite = params.get("invite");
+  if (invite) localStorage.setItem("reisapp_pending_invite", invite);
+}
+
+function getPendingInviteToken() {
+  return localStorage.getItem("reisapp_pending_invite") || "";
+}
+
+function clearPendingInviteToken() {
+  localStorage.removeItem("reisapp_pending_invite");
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("invite")) return;
+  url.searchParams.delete("invite");
+  window.history.replaceState({}, document.title, url.toString());
+}
+
+function getAppShareBaseUrl() {
+  const configured = getConfig().publicAppUrl;
+  if (configured) return configured.replace(/\/?$/, "/");
+
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+
+function getInviteLink(member) {
+  if (!member.inviteToken) return "";
+  const url = new URL(getAppShareBaseUrl());
+  url.searchParams.set("invite", member.inviteToken);
+  return url.toString();
+}
+
+function getWhatsAppText(member) {
+  const role = ROLES[member.role] || member.role;
+  return [
+    `Hoi ${member.name},`,
+    "",
+    "Ik ben bezig met onze Noorwegen reisapp. Via deze link kun je meekijken met de route, dagplanning, voortgang en dagdetails.",
+    `Je rol is: ${role}.`,
+    "",
+    getInviteLink(member),
+  ].join("\n");
+}
+
+function getWhatsAppShareUrl(member) {
+  return `https://wa.me/?text=${encodeURIComponent(getWhatsAppText(member))}`;
+}
+
+function getEmailShareUrl(member) {
+  const subject = encodeURIComponent("Uitnodiging Rondreis Noorwegen");
+  return `mailto:?subject=${subject}&body=${encodeURIComponent(getWhatsAppText(member))}`;
+}
+
+function canInviteRole(role) {
+  return Object.prototype.hasOwnProperty.call(INVITE_ROLES, role);
+}
+
 function getMembers() {
   if (remoteMembers && remoteMembers.length) {
     return remoteMembers.map((member) => ({
@@ -77,6 +150,8 @@ function getMembers() {
       name: member.display_name,
       role: member.role,
       email: member.invited_email || "",
+      inviteToken: member.invite_token || "",
+      joined: Boolean(member.joined_at),
     }));
   }
 
@@ -117,22 +192,33 @@ function setCurrentUser(id) {
 }
 
 async function addMember() {
-  const name = window.prompt("Naam van de reiziger?");
-  if (!name || !name.trim()) return;
+  const names = newMemberName
+    .split("\n")
+    .map((name) => name.trim())
+    .filter(Boolean);
+  const role = canInviteRole(newMemberRole) ? newMemberRole : "follower";
+  if (!names.length) {
+    authMessage = "Vul eerst minimaal een naam in.";
+    render();
+    return;
+  }
 
   if (isCloudMode() && remoteTrip) {
-    const email = window.prompt("E-mailadres voor uitnodiging? Dit mag leeg blijven.");
-    const { error } = await supabaseClient.from("trip_members").insert({
+    const rows = names.map((name) => ({
       trip_id: remoteTrip.id,
-      display_name: name.trim(),
-      invited_email: email && email.trim() ? email.trim() : null,
-      role: "follower",
-    });
+      display_name: name,
+      invited_email: null,
+      invite_token: createInviteToken(),
+      role,
+    }));
+    const { error } = await supabaseClient.from("trip_members").insert(rows);
 
     if (error) {
       authMessage = error.message;
     } else {
-      authMessage = `${name.trim()} is toegevoegd als volger.`;
+      authMessage = `${names.length} ${names.length === 1 ? "persoon is" : "personen zijn"} toegevoegd als ${ROLES[role]}.`;
+      newMemberName = "";
+      newMemberRole = "follower";
       await loadRemoteState();
     }
     render();
@@ -140,21 +226,70 @@ async function addMember() {
   }
 
   const members = getMembers();
-  const id = name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "") || `lid-${Date.now()}`;
+  names.forEach((name) => {
+    const id = name
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || `lid-${Date.now()}`;
 
-  members.push({ id: `${id}-${Date.now()}`, name: name.trim(), role: "follower" });
+    members.push({ id: `${id}-${Date.now()}`, name, role });
+  });
+  newMemberName = "";
+  newMemberRole = "follower";
   saveMembers(members);
   render();
 }
 
+function updateNewMember(field, value) {
+  if (field === "name") newMemberName = value;
+  if (field === "role") newMemberRole = canInviteRole(value) ? value : "follower";
+}
+
 async function updateMemberRole(id, role) {
+  const member = getMembers().find((item) => item.id === id || item.memberId === id);
+  if (!member) return;
+
+  if (role === "admin" && member.role !== "admin") {
+    if (isCloudMode() && authUser?.email) {
+      const password = window.prompt(
+        `Vul je eigen administrator-wachtwoord in om ${member.name} administrator te maken.`
+      );
+      if (!password) {
+        authMessage = "Administrator maken is geannuleerd.";
+        render();
+        return;
+      }
+
+      const { error } = await supabaseClient.auth.signInWithPassword({
+        email: authUser.email,
+        password,
+      });
+
+      if (error) {
+        authMessage = "Wachtwoord klopt niet. Administrator maken is geannuleerd.";
+        render();
+        return;
+      }
+    } else {
+      const password = window.prompt(
+        `Vul je administrator-wachtwoord in om ${member.name} administrator te maken.`
+      );
+      if (!password) {
+        authMessage = "Administrator maken is geannuleerd.";
+        render();
+        return;
+      }
+    }
+
+    if (getCurrentRole() !== "admin") {
+      authMessage = "Administrator maken is geannuleerd.";
+      render();
+      return;
+    }
+  }
+
   if (isCloudMode()) {
-    const member = getMembers().find((item) => item.id === id || item.memberId === id);
-    if (!member) return;
     const { error } = await supabaseClient.from("trip_members").update({ role }).eq("id", member.memberId);
     authMessage = error ? error.message : "Rol bijgewerkt.";
     await loadRemoteState();
@@ -180,6 +315,94 @@ async function updateMemberName(id, name) {
 
   const members = getMembers().map((member) => (member.id === id ? { ...member, name } : member));
   saveMembers(members);
+  render();
+}
+
+async function removeMember(id) {
+  const member = getMembers().find((item) => item.id === id || item.memberId === id);
+  if (!member) return;
+
+  if (member.id === currentUserId) {
+    authMessage = "Je kunt jezelf niet uit deze reis verwijderen.";
+    render();
+    return;
+  }
+
+  const confirmed = window.confirm(`${member.name} verwijderen uit deze reis?`);
+  if (!confirmed) return;
+
+  if (isCloudMode()) {
+    const { error } = await supabaseClient.from("trip_members").delete().eq("id", member.memberId);
+    authMessage = error ? error.message : `${member.name} is verwijderd.`;
+    await loadRemoteState();
+    render();
+    return;
+  }
+
+  const members = getMembers().filter((item) => item.id !== id);
+  saveMembers(members);
+  render();
+}
+
+async function copyInviteLink(id) {
+  const member = getMembers().find((item) => item.id === id || item.memberId === id);
+  if (!member || !member.inviteToken) {
+    authMessage = "Deze persoon heeft nog geen uitnodigingslink.";
+    render();
+    return;
+  }
+
+  const text = getWhatsAppText(member);
+  try {
+    await navigator.clipboard.writeText(text);
+    authMessage = `WhatsApp-tekst voor ${member.name} is gekopieerd.`;
+  } catch (_) {
+    window.prompt("Kopieer deze WhatsApp-tekst:", text);
+    authMessage = `Kopieer de tekst voor ${member.name}.`;
+  }
+  render();
+}
+
+async function copyRoleInviteLinks(role) {
+  const members = getMembers().filter((member) => member.role === role && member.inviteToken && !member.joined);
+  if (!members.length) {
+    authMessage = `Geen open links voor ${ROLES[role]}.`;
+    render();
+    return;
+  }
+
+  const text = members
+    .map((member) => `${member.name}: ${getInviteLink(member)}`)
+    .join("\n");
+
+  try {
+    await navigator.clipboard.writeText(text);
+    authMessage = `${members.length} links voor ${ROLES[role]} gekopieerd.`;
+  } catch (_) {
+    window.prompt(`Kopieer deze links voor ${ROLES[role]}:`, text);
+    authMessage = `Kopieer de links voor ${ROLES[role]}.`;
+  }
+  render();
+}
+
+async function ensureInviteLink(id) {
+  const member = getMembers().find((item) => item.id === id || item.memberId === id);
+  if (!member) return;
+
+  if (!isCloudMode()) {
+    authMessage = "WhatsApp-uitnodigingen werken pas met Supabase.";
+    render();
+    return;
+  }
+
+  const inviteToken = createInviteToken();
+  const { error } = await supabaseClient
+    .from("trip_members")
+    .update({ invite_token: inviteToken })
+    .eq("id", member.memberId);
+
+  authMessage = error ? error.message : `Uitnodigingslink voor ${member.name} is gemaakt.`;
+  await loadRemoteState();
   render();
 }
 
@@ -219,6 +442,7 @@ if (window.matchMedia) {
 applyTheme();
 
 async function initAuth() {
+  rememberInviteToken();
   initSupabaseClient();
   if (!supabaseClient) {
     authReady = true;
@@ -309,12 +533,43 @@ async function loadRemoteState() {
     display_name: displayName,
   });
 
+  const inviteToken = getPendingInviteToken();
+  if (inviteToken) {
+    const claimed = await supabaseClient.rpc("claim_trip_invite", {
+      invite: inviteToken,
+      new_display_name: displayName,
+    });
+
+    if (claimed.error) {
+      authMessage = claimed.error.message;
+    } else {
+      clearPendingInviteToken();
+      const claimedTripId = claimed.data?.[0]?.trip_id;
+      if (claimedTripId) {
+        const claimedTrip = await supabaseClient.from("trips").select("*").eq("id", claimedTripId).single();
+        if (claimedTrip.error) {
+          authMessage = claimedTrip.error.message;
+          return;
+        }
+        remoteTrip = claimedTrip.data;
+      }
+    }
+  }
+
   const slug = getDefaultTripSlug();
-  let { data: trip, error: tripError } = await supabaseClient
-    .from("trips")
-    .select("*")
-    .eq("slug", slug)
-    .maybeSingle();
+  let trip = remoteTrip;
+  let tripError = null;
+
+  if (!trip) {
+    const loaded = await supabaseClient
+      .from("trips")
+      .select("*")
+      .eq("slug", slug)
+      .maybeSingle();
+
+    trip = loaded.data;
+    tripError = loaded.error;
+  }
 
   if (!trip && !tripError) {
     const created = await supabaseClient
@@ -827,10 +1082,27 @@ function renderAdminPanel() {
           <h2>Noorwegen 2026</h2>
           <p class="muted">Rollen gelden voor deze reis. Iemand kan later bij een andere reis gewoon een andere rol krijgen.</p>
         </div>
+      </div>
+
+      <div class="member-add-row">
+        <select onchange="updateNewMember('role', this.value)">
+          ${Object.entries(INVITE_ROLES)
+            .map(([key, label]) => `<option value="${key}" ${newMemberRole === key ? "selected" : ""}>${label}</option>`)
+            .join("")}
+        </select>
+        <textarea oninput="updateNewMember('name', this.value)" placeholder="Naam of meerdere namen, elk op een nieuwe regel">${newMemberName}</textarea>
         <button class="linkbtn mapsbtn" onclick="addMember()">Lid toevoegen</button>
       </div>
 
+      <div class="bulk-actions">
+        <button class="linkbtn" onclick="copyRoleInviteLinks('follower')">Kopieer alle volgerlinks</button>
+        <button class="linkbtn" onclick="copyRoleInviteLinks('traveler')">Kopieer alle reisgenootlinks</button>
+        <button class="linkbtn" onclick="copyRoleInviteLinks('leader')">Kopieer alle reisleiderlinks</button>
+      </div>
+      <p class="muted">Administrator voeg je niet via een link toe. Maak iemand eerst lid en wijzig daarna bewust de rol naar Administrator.</p>
+
       <div class="member-list">
+        ${authMessage ? `<p class="admin-message">${authMessage}</p>` : ""}
         ${members
           .map(
             (member) => `
@@ -841,7 +1113,17 @@ function renderAdminPanel() {
                     .map(([key, label]) => `<option value="${key}" ${member.role === key ? "selected" : ""}>${label}</option>`)
                     .join("")}
                 </select>
-                <span class="member-current">${member.id === currentUserId ? "Actief" : member.email || ""}</span>
+                <span class="member-current">${member.id === currentUserId ? "Actief" : member.joined ? "Gekoppeld" : member.email || "Uitnodiging klaar"}</span>
+                ${
+                  isCloudMode() && member.inviteToken && !member.joined
+                    ? `<a class="linkbtn mapsbtn" target="_blank" href="${getWhatsAppShareUrl(member)}">WhatsApp openen</a>
+                       <a class="linkbtn" href="${getEmailShareUrl(member)}">E-mail openen</a>
+                       <button class="linkbtn" onclick="copyInviteLink('${member.id}')">Kopieren</button>`
+                    : isCloudMode() && !member.joined && member.id !== currentUserId
+                      ? `<button class="linkbtn mapsbtn" onclick="ensureInviteLink('${member.id}')">Maak link</button>`
+                    : ""
+                }
+                <button class="linkbtn stopbtn" onclick="removeMember('${member.id}')">Verwijderen</button>
               </div>
             `
           )
