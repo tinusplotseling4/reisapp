@@ -1,0 +1,20 @@
+{
+  "name": "Rondreis Noorwegen 2026",
+  "short_name": "Noorwegen",
+  "description": "Reisapp voor de rondreis door Noorwegen.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#02070b",
+  "theme_color": "#02070b",
+  "categories": ["travel", "navigation", "lifestyle"],
+  "icons": [
+    {
+      "src": "assets/images/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

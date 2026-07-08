@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Rondreis Noorwegen 2026">
+  <rect width="512" height="512" fill="#02070b"/>
+  <path d="M112 366c48-92 86-157 124-197 37-39 76-58 126-81-27 47-55 79-89 114-34 36-75 75-124 164h-37z" fill="#174c82"/>
+  <path d="M118 382c62-103 116-163 181-210 27-20 58-40 96-63-32 52-69 90-112 131-42 41-89 86-134 142h-31z" fill="#31d270"/>
+  <path d="M105 385c53-5 111-6 175-4 42 1 85 4 127 9" fill="none" stroke="#f3f8ff" stroke-width="17" stroke-linecap="round"/>
+  <circle cx="185" cy="303" r="18" fill="#31d270"/>
+  <circle cx="185" cy="303" r="34" fill="none" stroke="#31d270" stroke-width="8" opacity=".38"/>
+  <path d="M163 153l25 53 58 7-42 39 11 57-52-28-51 28 10-57-42-39 58-7 25-53z" fill="#f7b32b"/>
+  <text x="256" y="444" text-anchor="middle" fill="#f3f8ff" font-family="Arial, sans-serif" font-size="48" font-weight="800">NO 2026</text>
+</svg>

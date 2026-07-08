@@ -51,6 +51,7 @@ let diaryDraft = {
 let diaryRecorder;
 let diaryRecorderChunks = [];
 let diaryRecognition;
+let deferredInstallPrompt = null;
 
 function getConfig() {
   return window.REISAPP_CONFIG || {};
@@ -432,6 +433,14 @@ function renderThemeControl() {
       </select>
     </label>
   `;
+}
+
+async function installApp() {
+  if (!deferredInstallPrompt) return;
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+  render();
 }
 
 if (window.matchMedia) {
@@ -1237,7 +1246,18 @@ function renderNavigationForRole() {
   if (adminButton) {
     adminButton.style.display = getCurrentRole() === "admin" && (!isCloudMode() || authUser) ? "inline-flex" : "none";
   }
-  if (themeSlot) themeSlot.innerHTML = renderThemeControl();
+  if (themeSlot) {
+    themeSlot.innerHTML = `
+      <div class="header-tools">
+        ${
+          deferredInstallPrompt
+            ? `<button class="linkbtn install-btn" onclick="installApp()">App installeren</button>`
+            : ""
+        }
+        ${renderThemeControl()}
+      </div>
+    `;
+  }
 }
 
 function getVisitedCount() {
@@ -1937,5 +1957,11 @@ function render() {
   renderLotte();
   renderAdminPanel();
 }
+
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  render();
+});
 
 initAuth();
