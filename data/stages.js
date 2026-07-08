@@ -208,14 +208,14 @@ const STAGES = [
     km: "+/- 450-650 km",
     time: "+/- 7-9 uur",
     goal: "Noorwegen rustig verlaten.",
-    route: ["Beitostolen, Norway", "Fagernes, Norway", "Dokka, Norway", "Gjovik, Norway", "Kongsvinger, Norway", "Karlstad, Sweden"],
+    route: ["Gjendesheim, Norway", "Beitostolen, Norway", "Fagernes, Norway", "Dokka, Norway", "Gjovik, Norway", "Kongsvinger, Norway", "Karlstad, Sweden"],
     pois: [
       ["Fagernes", 3, "Praktisch en mooi gelegen.", "https://www.google.com/maps/search/Fagernes+Norway"],
       ["Gjovik / Mjosa", 2, "Praktischere lijn naar het zuiden dan de slinger via Lillehammer.", "https://www.google.com/maps/search/Gjovik+Norway"],
       ["Bos- en merenroute door Zweden", 3, "Rustige overgang terug naar Zweden.", "https://www.google.com/maps/search/forest+lake+route+Sweden+Karlstad"],
       ["Laatste Noorse bergstop", 3, "Kies zelf een mooie plek onderweg voordat de route vlakker wordt.", "https://www.google.com/maps/search/scenic+viewpoint+Fagernes+Norway"],
     ],
-    maps: "https://www.google.com/maps/dir/Beitostolen%2C+Norway/Fagernes%2C+Norway/Dokka%2C+Norway/Gjovik%2C+Norway/Kongsvinger%2C+Norway/Karlstad%2C+Sweden",
+    maps: "https://www.google.com/maps/dir/Gjendesheim%2C+Norway/Beitostolen%2C+Norway/Fagernes%2C+Norway/Dokka%2C+Norway/Gjovik%2C+Norway/Kongsvinger%2C+Norway/Karlstad%2C+Sweden",
   },
   {
     day: "Dag 11 / Etappe 11",

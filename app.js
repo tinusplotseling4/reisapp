@@ -801,6 +801,7 @@ const ROUTE_STAGES = [
     [61.5, 8.4],
   ],
   [
+    [61.5, 8.4],
     [61.25, 8.91],
     [60.986, 9.232],
     [60.833, 10.075],
@@ -1612,17 +1613,62 @@ async function getStageGeometry(points) {
   return data.routes[0].geometry.coordinates.map(([lon, lat]) => [lat, lon]);
 }
 
+function distanceKm(a, b) {
+  const toRad = (value) => (value * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRad(b[0] - a[0]);
+  const dLon = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return 2 * earthRadiusKm * Math.asin(Math.sqrt(h));
+}
+
+function routeLengthKm(line) {
+  return line.slice(1).reduce((total, point, index) => total + distanceKm(line[index], point), 0);
+}
+
+function isSuspiciousRouteLine(fallback, line) {
+  if (!fallback.length || !line.length) return true;
+
+  const fallbackLength = routeLengthKm(fallback);
+  const routedLength = routeLengthKm(line);
+  if (routedLength > fallbackLength * 2.2) return true;
+
+  const fallbackBounds = L.latLngBounds(fallback);
+  const paddedBounds = fallbackBounds.pad(0.65);
+  return line.some((point) => !paddedBounds.contains(point));
+}
+
+function getConnectedRouteStage(index) {
+  const points = [...ROUTE_STAGES[index]];
+  const previous = ROUTE_STAGES[index - 1];
+  if (!previous || !points.length) return points;
+
+  const previousEnd = previous[previous.length - 1];
+  if (distanceKm(previousEnd, points[0]) > 3) {
+    return [previousEnd, ...points];
+  }
+  return points;
+}
+
 async function renderTotalRoute() {
   setRouteStatus("Route wordt opgebouwd uit alle etappes...");
   const allBounds = [];
   let usedFallback = false;
 
   for (let index = 0; index < ROUTE_STAGES.length; index++) {
-    const fallback = ROUTE_STAGES[index];
+    const fallback = getConnectedRouteStage(index);
     let line = fallback;
 
     try {
       line = await getStageGeometry(fallback);
+      if (isSuspiciousRouteLine(fallback, line)) {
+        line = fallback;
+        usedFallback = true;
+      }
     } catch (_) {
       usedFallback = true;
     }
