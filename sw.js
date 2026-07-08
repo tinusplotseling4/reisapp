@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v12-gps-reset";
+const CACHE_NAME = "rondreis-noorwegen-2026-v13-route-light";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260708-gps-reset",
-  "./app.js?v=20260708-gps-reset",
+  "./style.css?v=20260709-route-light",
+  "./app.js?v=20260709-route-light",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260708-gps-reset",
+  "./data/stages.js?v=20260709-route-light",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

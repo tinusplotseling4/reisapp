@@ -513,7 +513,7 @@ button:hover,
 }
 
 .total-route-map .leaflet-tile {
-  filter: brightness(0.48) contrast(1.08) saturate(0.86);
+  filter: none;
 }
 
 .total-route-map .leaflet-control-container,
