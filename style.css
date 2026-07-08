@@ -195,6 +195,19 @@ button:hover,
     url("assets/images/scandinavia-map-hero.png") center / cover no-repeat;
 }
 
+.dashboard-route-map {
+  background: #dce8ed;
+}
+
+.dashboard-route-map.hero-map {
+  background: #dce8ed;
+}
+
+.dashboard-route-map.hero-map::before,
+.dashboard-route-map.hero-map::after {
+  display: none;
+}
+
 .hero-map::before,
 .hero-map::after {
   content: "";
@@ -209,6 +222,38 @@ button:hover,
 
 .hero-map::after {
   background: linear-gradient(180deg, rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.24));
+}
+
+.dashboard-route-map .leaflet-control-zoom a {
+  border: 0;
+  background: rgba(2, 7, 11, 0.88);
+  color: #fff;
+}
+
+.dashboard-route-map .leaflet-control-zoom a:hover {
+  background: rgba(16, 25, 35, 0.96);
+  color: #fff;
+}
+
+.dashboard-map-control {
+  margin: 0 0 10px 10px;
+}
+
+.dashboard-follow-btn {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(2, 7, 11, 0.88);
+  color: #fff;
+  padding: 0 13px;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.dashboard-follow-btn.active {
+  background: var(--green);
+  color: #021107;
 }
 
 .hero-track-overlay {

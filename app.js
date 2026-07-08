@@ -43,6 +43,11 @@ let totalRouteMap;
 let totalRouteBounds;
 let livePositionMarker;
 let liveTrackLine;
+let dashboardRouteMap;
+let dashboardPositionMarker;
+let dashboardTrackLine;
+let dashboardFollowLive = localStorage.getItem("reisapp_dashboard_follow") !== "false";
+let dashboardProgrammaticMove = false;
 let locationTimer;
 let diaryDraft = {
   stageIndex: null,
@@ -814,6 +819,7 @@ function showTab(id) {
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   if (id === "total") initTotalRoute();
+  if (id === "map") initDashboardRoute();
 }
 
 function canControlRoute() {
@@ -867,6 +873,14 @@ function toggleDriving(mapsUrl = "") {
   driving = shouldStart;
   localStorage.setItem("reisapp_driving", String(driving));
   render();
+
+  if (shouldStart) {
+    startLocationTracking();
+  } else if (locationTimer) {
+    clearInterval(locationTimer);
+    locationTimer = null;
+    updateLiveMapStyles();
+  }
 
   if (shouldStart && mapsUrl) {
     window.open(mapsUrl, "_blank");
@@ -1412,6 +1426,10 @@ function centerTotalRoute() {
   }
 }
 
+function getLiveMarkerColor() {
+  return driving ? "#22c55e" : "#ef4444";
+}
+
 function resetTotalRoute() {
   if (!totalRouteMap) return;
   totalRouteMap.remove();
@@ -1425,8 +1443,106 @@ function resetTotalRoute() {
   }
 }
 
+function resetDashboardRoute() {
+  if (!dashboardRouteMap) return;
+  dashboardRouteMap.remove();
+  dashboardRouteMap = null;
+  dashboardPositionMarker = null;
+  dashboardTrackLine = null;
+}
+
 function getFallbackRouteBounds() {
   return ROUTE_STAGES.flat();
+}
+
+function getTrackLatLngs(track = getSavedTrack()) {
+  return track.map((item) => [item.lat, item.lon]);
+}
+
+function getDashboardBounds() {
+  const track = getTrackLatLngs();
+  if (track.length) return L.latLngBounds(track);
+  return L.latLngBounds(getFallbackRouteBounds());
+}
+
+function setDashboardFollowLive(shouldFollow) {
+  dashboardFollowLive = shouldFollow;
+  localStorage.setItem("reisapp_dashboard_follow", String(shouldFollow));
+
+  if (shouldFollow) {
+    const track = getSavedTrack();
+    const last = track[track.length - 1];
+    if (last && dashboardRouteMap) {
+      dashboardRouteMap.panTo([last.lat, last.lon], { animate: true });
+    }
+  }
+
+  updateDashboardFollowControl();
+}
+
+function updateDashboardFollowControl() {
+  const button = document.getElementById("dashboardFollowButton");
+  if (!button) return;
+  button.textContent = dashboardFollowLive ? "GPS volgen" : "Volgen uit";
+  button.classList.toggle("active", dashboardFollowLive);
+}
+
+function updateLiveMapStyles() {
+  const color = getLiveMarkerColor();
+  [livePositionMarker, dashboardPositionMarker].forEach((marker) => {
+    if (marker) marker.setStyle({ fillColor: color });
+  });
+}
+
+function initDashboardRoute() {
+  const container = document.getElementById("dashboardRouteMap");
+  if (!document.getElementById("map")?.classList.contains("active")) return;
+  if (!container || typeof L === "undefined") return;
+
+  if (!dashboardRouteMap) {
+    dashboardRouteMap = L.map(container, {
+      zoomControl: false,
+      scrollWheelZoom: true,
+      attributionControl: false,
+    });
+
+    L.control.zoom({ position: "bottomright" }).addTo(dashboardRouteMap);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 19,
+    }).addTo(dashboardRouteMap);
+
+    const followControl = L.control({ position: "bottomleft" });
+    followControl.onAdd = () => {
+      const wrapper = L.DomUtil.create("div", "dashboard-map-control");
+      const button = L.DomUtil.create("button", "dashboard-follow-btn", wrapper);
+      button.id = "dashboardFollowButton";
+      button.type = "button";
+      L.DomEvent.disableClickPropagation(wrapper);
+      L.DomEvent.on(button, "click", () => setDashboardFollowLive(true));
+      return wrapper;
+    };
+    followControl.addTo(dashboardRouteMap);
+
+    dashboardRouteMap.on("dragstart zoomstart", () => {
+      if (!dashboardProgrammaticMove) setDashboardFollowLive(false);
+    });
+  }
+
+  const bounds = getDashboardBounds();
+  if (bounds.isValid()) {
+    dashboardProgrammaticMove = true;
+    dashboardRouteMap.fitBounds(bounds, { padding: [34, 34], maxZoom: getSavedTrack().length ? 12 : 6 });
+    setTimeout(() => {
+      dashboardProgrammaticMove = false;
+    }, 120);
+  } else {
+    dashboardRouteMap.setView([60.5, 8.5], 5);
+  }
+
+  restoreDashboardTrack();
+  updateDashboardFollowControl();
+  setTimeout(() => dashboardRouteMap.invalidateSize(), 80);
 }
 
 function initTotalRoute() {
@@ -1530,7 +1646,18 @@ function restoreLiveTrack() {
   drawLivePosition(track[track.length - 1], track);
 }
 
+function restoreDashboardTrack() {
+  const track = getSavedTrack();
+  if (!track.length || !dashboardRouteMap) return;
+  drawDashboardLivePosition(track[track.length - 1], track);
+}
+
 function drawLivePosition(point, track = getSavedTrack()) {
+  drawTotalLivePosition(point, track);
+  drawDashboardLivePosition(point, track);
+}
+
+function drawTotalLivePosition(point, track = getSavedTrack()) {
   if (!totalRouteMap) return;
 
   const latLng = [point.lat, point.lon];
@@ -1539,14 +1666,15 @@ function drawLivePosition(point, track = getSavedTrack()) {
       radius: 8,
       color: "#ffffff",
       weight: 2,
-      fillColor: "#fbbf24",
+      fillColor: getLiveMarkerColor(),
       fillOpacity: 1,
     }).addTo(totalRouteMap);
   } else {
     livePositionMarker.setLatLng(latLng);
+    livePositionMarker.setStyle({ fillColor: getLiveMarkerColor() });
   }
 
-  const trackLine = track.map((item) => [item.lat, item.lon]);
+  const trackLine = getTrackLatLngs(track);
   if (!liveTrackLine) {
     liveTrackLine = L.polyline(trackLine, {
       color: "#22c55e",
@@ -1555,6 +1683,40 @@ function drawLivePosition(point, track = getSavedTrack()) {
     }).addTo(totalRouteMap);
   } else {
     liveTrackLine.setLatLngs(trackLine);
+  }
+}
+
+function drawDashboardLivePosition(point, track = getSavedTrack()) {
+  if (!dashboardRouteMap) return;
+
+  const latLng = [point.lat, point.lon];
+  if (!dashboardPositionMarker) {
+    dashboardPositionMarker = L.circleMarker(latLng, {
+      radius: 9,
+      color: "#ffffff",
+      weight: 3,
+      fillColor: getLiveMarkerColor(),
+      fillOpacity: 1,
+      className: driving ? "live-marker-driving" : "live-marker-stopped",
+    }).addTo(dashboardRouteMap);
+  } else {
+    dashboardPositionMarker.setLatLng(latLng);
+    dashboardPositionMarker.setStyle({ fillColor: getLiveMarkerColor() });
+  }
+
+  const trackLine = getTrackLatLngs(track);
+  if (!dashboardTrackLine) {
+    dashboardTrackLine = L.polyline(trackLine, {
+      color: "#22c55e",
+      weight: 5,
+      opacity: 0.92,
+    }).addTo(dashboardRouteMap);
+  } else {
+    dashboardTrackLine.setLatLngs(trackLine);
+  }
+
+  if (dashboardFollowLive) {
+    dashboardRouteMap.panTo(latLng, { animate: true });
   }
 }
 
@@ -1608,9 +1770,6 @@ function updateLivePosition() {
       saveTrackPoint(point);
       drawLivePosition(point);
       if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
-      if (document.getElementById("map").classList.contains("active")) {
-        document.getElementById("summary").innerHTML = renderDashboard();
-      }
       setRouteStatus(`GPS bijgewerkt. Nauwkeurigheid ongeveer ${point.accuracy} meter.`);
     },
     () => setRouteStatus("GPS-toegang is geweigerd of niet beschikbaar."),
@@ -1644,9 +1803,7 @@ function renderDashboard() {
     ${renderUserSwitcher()}
 
     <section class="trip-hero">
-      <div class="hero-map" aria-hidden="true">
-        ${renderHeroTrackOverlay()}
-      </div>
+      <div id="dashboardRouteMap" class="hero-map dashboard-route-map" aria-label="Live GPS-kaart van de reis"></div>
     </section>
 
     <section class="dashboard">
@@ -1993,7 +2150,9 @@ function render() {
     return;
   }
 
+  resetDashboardRoute();
   document.getElementById("summary").innerHTML = renderDashboard();
+  setTimeout(initDashboardRoute, 0);
   renderStages();
   renderLotte();
   renderAdminPanel();
@@ -2006,3 +2165,4 @@ window.addEventListener("beforeinstallprompt", (event) => {
 });
 
 initAuth();
+if (driving) startLocationTracking();
