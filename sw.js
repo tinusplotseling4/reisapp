@@ -1,9 +1,9 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v1";
+const CACHE_NAME = "rondreis-noorwegen-2026-v2-dashboard-map";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css",
-  "./app.js",
+  "./style.css?v=20260708-dashboard-map",
+  "./app.js?v=20260708-dashboard-map",
   "./manifest.webmanifest",
   "./data/stages.js",
   "./data/app-config.public.js",
@@ -24,6 +24,12 @@ self.addEventListener("activate", (event) => {
       .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {

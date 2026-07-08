@@ -1462,7 +1462,7 @@ function getTrackLatLngs(track = getSavedTrack()) {
 function getDashboardBounds() {
   const track = getTrackLatLngs();
   if (track.length) return L.latLngBounds(track);
-  return L.latLngBounds(getFallbackRouteBounds());
+  return null;
 }
 
 function setDashboardFollowLive(shouldFollow) {
@@ -1530,14 +1530,14 @@ function initDashboardRoute() {
   }
 
   const bounds = getDashboardBounds();
-  if (bounds.isValid()) {
+  if (bounds && bounds.isValid()) {
     dashboardProgrammaticMove = true;
     dashboardRouteMap.fitBounds(bounds, { padding: [34, 34], maxZoom: getSavedTrack().length ? 12 : 6 });
     setTimeout(() => {
       dashboardProgrammaticMove = false;
     }, 120);
   } else {
-    dashboardRouteMap.setView([60.5, 8.5], 5);
+    dashboardRouteMap.setView([61.4, 9.2], 5);
   }
 
   restoreDashboardTrack();
