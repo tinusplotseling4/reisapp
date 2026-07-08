@@ -954,6 +954,12 @@ button:hover,
   font-weight: 700;
 }
 
+.voice-status {
+  margin: 0;
+  color: var(--light-blue);
+  font-weight: 800;
+}
+
 .diary-audio {
   width: 100%;
 }

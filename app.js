@@ -45,6 +45,7 @@ let diaryDraft = {
   photos: [],
   audioData: "",
   transcript: "",
+  voiceStatus: "",
   recording: false,
 };
 let diaryRecorder;
@@ -865,6 +866,7 @@ function resetDiaryDraft(index = activeStage) {
     photos: [],
     audioData: "",
     transcript: "",
+    voiceStatus: "",
     recording: false,
   };
 }
@@ -966,34 +968,85 @@ function blobToDataUrl(blob) {
 
 function startSpeechRecognition() {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!Recognition) return;
+  if (!Recognition) {
+    diaryDraft.voiceStatus =
+      "Live tekst wordt niet ondersteund in deze browser. De audio wordt wel bewaard.";
+    return false;
+  }
 
   diaryRecognition = new Recognition();
   diaryRecognition.lang = "nl-NL";
   diaryRecognition.continuous = true;
   diaryRecognition.interimResults = true;
+  diaryRecognition.onstart = () => {
+    diaryDraft.voiceStatus = "Luistert mee. Spreek je dagboeknotitie rustig in.";
+    renderStages();
+  };
   diaryRecognition.onresult = (event) => {
     let transcript = "";
     for (let index = 0; index < event.results.length; index++) {
       transcript += event.results[index][0].transcript;
     }
     diaryDraft.transcript = transcript.trim();
+    diaryDraft.voiceStatus = diaryDraft.transcript
+      ? "Tekst herkend. Je kunt hem hieronder nog aanvullen of corrigeren."
+      : "Luistert nog mee.";
     renderStages();
   };
-  diaryRecognition.start();
+  diaryRecognition.onerror = (event) => {
+    const messages = {
+      "not-allowed": "Microfoontoegang is geweigerd. Geef toestemming in je browser of telefooninstellingen.",
+      "no-speech": "Ik hoorde nog geen spraak. Probeer iets dichter bij de microfoon te praten.",
+      "audio-capture": "De microfoon kon niet worden gebruikt. Controleer of een andere app hem bezet houdt.",
+      network: "Spraakherkenning heeft internet nodig en kreeg geen goede verbinding.",
+    };
+    diaryDraft.voiceStatus =
+      messages[event.error] || "Spraakherkenning stopte. De audio-opname wordt nog wel bewaard.";
+    renderStages();
+  };
+  diaryRecognition.onend = () => {
+    if (diaryDraft.recording && !diaryDraft.transcript) {
+      diaryDraft.voiceStatus = "Opname loopt nog. Als er geen tekst verschijnt, bewaren we de audio alsnog.";
+      renderStages();
+    }
+  };
+
+  try {
+    diaryRecognition.start();
+    return true;
+  } catch (error) {
+    diaryDraft.voiceStatus = "Spraakherkenning kon niet starten. De audio wordt wel bewaard.";
+    diaryRecognition = null;
+    return false;
+  }
 }
 
 async function startDiaryRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    diaryDraft.transcript = "Microfoon is niet beschikbaar in deze browser.";
+    diaryDraft.voiceStatus = "Microfoon is niet beschikbaar in deze browser.";
     renderStages();
     return;
   }
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  diaryDraft.voiceStatus = "Microfoon wordt gestart.";
+  renderStages();
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (error) {
+    diaryDraft.voiceStatus =
+      error && error.name === "NotAllowedError"
+        ? "Microfoontoegang is geweigerd. Geef toestemming in je browser of telefooninstellingen."
+        : "Microfoon kon niet starten. Probeer de pagina opnieuw te openen.";
+    renderStages();
+    return;
+  }
+
   diaryRecorderChunks = [];
   diaryRecorder = new MediaRecorder(stream);
   diaryDraft.recording = true;
+  diaryDraft.voiceStatus = "Opname loopt.";
 
   diaryRecorder.ondataavailable = (event) => {
     if (event.data.size) diaryRecorderChunks.push(event.data);
@@ -1004,6 +1057,9 @@ async function startDiaryRecording() {
     const blob = new Blob(diaryRecorderChunks, { type: diaryRecorder.mimeType || "audio/webm" });
     diaryDraft.audioData = await blobToDataUrl(blob);
     diaryDraft.recording = false;
+    diaryDraft.voiceStatus = diaryDraft.transcript
+      ? "Opname bewaard. Controleer de tekst en tik op Toevoegen."
+      : "Opname bewaard. Live tekst lukte niet; je kunt zelf tekst typen en de audio blijft bewaard.";
     renderStages();
   };
 
@@ -1018,6 +1074,8 @@ function stopDiaryRecording() {
     diaryRecognition = null;
   }
   if (diaryRecorder && diaryRecorder.state !== "inactive") {
+    diaryDraft.voiceStatus = "Opname wordt opgeslagen.";
+    renderStages();
     diaryRecorder.stop();
   }
 }
@@ -1079,7 +1137,12 @@ function renderDiaryComposer(stageIndex) {
               <button class="linkbtn ${diaryDraft.recording ? "stopbtn" : "startbtn"}" onclick="${diaryDraft.recording ? "stopDiaryRecording()" : "startDiaryRecording()"}">
                 ${diaryDraft.recording ? "Stop opname" : "Inspreken"}
               </button>
-              <p class="muted">${diaryDraft.transcript || "Ingesproken tekst verschijnt hier als de browser spraakherkenning ondersteunt."}</p>
+              <p class="voice-status">${diaryDraft.voiceStatus || "Tik op inspreken. Als live tekst op deze telefoon niet lukt, bewaren we alsnog de audio."}</p>
+              ${
+                diaryDraft.transcript
+                  ? `<p class="diary-transcript">${diaryDraft.transcript}</p>`
+                  : `<p class="muted">Nog geen herkende tekst.</p>`
+              }
               ${diaryDraft.audioData ? `<p class="muted">Audiobestand bewaard voor beheer.</p>` : ""}
             </div>`
           : ""
