@@ -196,11 +196,11 @@ button:hover,
 }
 
 .dashboard-route-map {
-  background: #dce8ed;
+  background: #07111c;
 }
 
 .dashboard-route-map.hero-map {
-  background: #dce8ed;
+  background: #07111c;
 }
 
 .dashboard-route-map.hero-map::before,
@@ -233,6 +233,16 @@ button:hover,
 .dashboard-route-map .leaflet-control-zoom a:hover {
   background: rgba(16, 25, 35, 0.96);
   color: #fff;
+}
+
+.dashboard-route-map .leaflet-control-attribution {
+  border: 0;
+  background: rgba(2, 7, 11, 0.58);
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.dashboard-route-map .leaflet-control-attribution a {
+  color: #dbeafe;
 }
 
 .dashboard-map-control {
@@ -499,7 +509,11 @@ button:hover,
   height: min(68vh, 720px);
   min-height: 520px;
   width: 100%;
-  background: #020408;
+  background: #07111c;
+}
+
+.total-route-map .leaflet-tile {
+  filter: brightness(0.48) contrast(1.08) saturate(0.86);
 }
 
 .total-route-map .leaflet-control-container,

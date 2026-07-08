@@ -1493,6 +1493,13 @@ function getDashboardBounds() {
   return null;
 }
 
+function addSatelliteLayer(map) {
+  return L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Tiles &copy; Esri",
+    maxZoom: 19,
+  }).addTo(map);
+}
+
 function setDashboardFollowLive(shouldFollow) {
   dashboardFollowLive = shouldFollow;
   localStorage.setItem("reisapp_dashboard_follow", String(shouldFollow));
@@ -1531,14 +1538,10 @@ function initDashboardRoute() {
     dashboardRouteMap = L.map(container, {
       zoomControl: false,
       scrollWheelZoom: true,
-      attributionControl: false,
     });
 
     L.control.zoom({ position: "bottomright" }).addTo(dashboardRouteMap);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      maxZoom: 19,
-    }).addTo(dashboardRouteMap);
+    addSatelliteLayer(dashboardRouteMap);
 
     const followControl = L.control({ position: "bottomleft" });
     followControl.onAdd = () => {
@@ -1586,10 +1589,7 @@ function initTotalRoute() {
     });
 
     L.control.zoom({ position: "bottomright" }).addTo(totalRouteMap);
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      maxZoom: 19,
-    }).addTo(totalRouteMap);
+    addSatelliteLayer(totalRouteMap);
 
     renderTotalRoute();
     restoreLiveTrack();
