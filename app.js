@@ -2,13 +2,13 @@ const ROLES = {
   admin: "Administrator",
   leader: "Reisleider",
   traveler: "Reisgenoot",
-  follower: "Volger",
+  follower: "Thuisblijver",
 };
 
 const INVITE_ROLES = {
   leader: "Reisleider",
   traveler: "Reisgenoot",
-  follower: "Volger",
+  follower: "Thuisblijver",
 };
 
 const VIEW_ROLES = {
@@ -1231,7 +1231,7 @@ function renderAdminPanel() {
       </div>
 
       <div class="bulk-actions">
-        <button class="linkbtn" onclick="copyRoleInviteLinks('follower')">Kopieer alle volgerlinks</button>
+        <button class="linkbtn" onclick="copyRoleInviteLinks('follower')">Kopieer alle thuisblijverlinks</button>
         <button class="linkbtn" onclick="copyRoleInviteLinks('traveler')">Kopieer alle reisgenootlinks</button>
         <button class="linkbtn" onclick="copyRoleInviteLinks('leader')">Kopieer alle reisleiderlinks</button>
       </div>
@@ -1271,7 +1271,7 @@ function renderAdminPanel() {
         <p><b>Administrator:</b> alles beheren, rollen uitdelen, audio zien en route sturen.</p>
         <p><b>Reisleider:</b> etappes starten/stoppen, route sturen en admin-bestanden zien.</p>
         <p><b>Medereiziger:</b> dagboek vullen, foto's/audio toevoegen en hoogtepunten afvinken.</p>
-        <p><b>Volger:</b> meekijken zonder dingen te wijzigen.</p>
+        <p><b>Thuisblijver:</b> meekijken zonder dingen te wijzigen.</p>
       </div>
     </section>
   `;
