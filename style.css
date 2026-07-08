@@ -690,11 +690,27 @@ button:hover,
   justify-content: flex-end;
 }
 
+.display-control {
+  display: grid;
+  gap: 8px;
+  width: min(620px, 100%);
+  margin: 4px 0 12px;
+  justify-items: start;
+}
+
+.display-control-title {
+  color: #7dd3fc;
+  font-size: 0.78rem;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
 .view-mode-control {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   align-items: center;
+  justify-content: flex-start;
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 900;

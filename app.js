@@ -14,6 +14,7 @@ const INVITE_ROLES = {
 const VIEW_ROLES = {
   "": "Eigen weergave",
   leader: "Reisleider",
+  traveler: "Reisgenoot",
   follower: "Thuisblijver",
 };
 
@@ -486,6 +487,15 @@ function renderViewModeControl() {
           `
         )
         .join("")}
+    </div>
+  `;
+}
+
+function renderDisplayControl() {
+  return `
+    <div class="display-control">
+      <span class="display-control-title">Weergave</span>
+      ${renderViewModeControl()}
     </div>
   `;
 }
@@ -1235,6 +1245,8 @@ function renderAdminPanel() {
         </div>
       </div>
 
+      ${renderDisplayControl()}
+
       <div class="member-add-row">
         <select onchange="updateNewMember('role', this.value)">
           ${Object.entries(INVITE_ROLES)
@@ -1305,7 +1317,6 @@ function renderNavigationForRole() {
   if (themeSlot) {
     themeSlot.innerHTML = `
       <div class="header-tools">
-        ${renderViewModeControl()}
         ${
           deferredInstallPrompt
             ? `<button class="linkbtn install-btn" onclick="installApp()">App installeren</button>`

@@ -1,9 +1,9 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v4-gps-panel-roles";
+const CACHE_NAME = "rondreis-noorwegen-2026-v6-admin-view-modes";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260708-gps-panel-roles",
-  "./app.js?v=20260708-gps-panel-roles",
+  "./style.css?v=20260708-admin-view-modes",
+  "./app.js?v=20260708-admin-view-modes",
   "./manifest.webmanifest",
   "./data/stages.js",
   "./data/app-config.public.js",
