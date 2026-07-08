@@ -37,8 +37,6 @@ noorwegen-2026
 
 Die reis wordt later gekoppeld aan de bestaande Noorwegen-route in `data/stages.js`.
 
-## 5. Volgende bouwstap
-
 ## 5. Dagboekmedia opslaan
 
 Voor centrale foto/audio-opslag:
@@ -49,7 +47,17 @@ Voor centrale foto/audio-opslag:
 
 Dit maakt de private buckets `diary-photos` en `diary-audio` en zet de juiste policies.
 
-## 6. Volgende bouwstap
+## 6. Testdata leegmaken
+
+Wil je de gedeelde reisdata schoonmaken zonder leden, rollen en uitnodigingslinks te verwijderen?
+
+1. Open de Supabase SQL editor.
+2. Plak de inhoud van `docs/supabase-reset-trip-data.sql`.
+3. Voer het script uit.
+
+Dit wist centrale GPS-punten, bezochte bezienswaardigheden, etappevoortgang, dagboeknotities en dagboekmedia voor `noorwegen-2026`.
+
+## 7. Volgende bouwstap
 
 Na deze setup bouwen we in de app:
 

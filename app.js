@@ -35,6 +35,7 @@ let remoteTrip = null;
 let remoteMembers = null;
 let remoteDiaryEntries = [];
 let remoteDiaryMedia = [];
+let remoteGpsPoints = [];
 let newMemberName = "";
 let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
@@ -53,6 +54,7 @@ let dashboardFollowLive = localStorage.getItem("reisapp_dashboard_follow") !== "
 let dashboardProgrammaticMove = false;
 let gpsStatus = localStorage.getItem("reisapp_gps_status") || "Nog geen GPS-punt gemeten op dit apparaat.";
 let locationTimer;
+let gpsRefreshTimer;
 let diaryDraft = {
   stageIndex: null,
   open: false,
@@ -218,6 +220,41 @@ function getMemberName(userId) {
 function setViewRoleMode(role) {
   viewRoleMode = Object.prototype.hasOwnProperty.call(VIEW_ROLES, role) ? role : "";
   localStorage.setItem("reisapp_view_role", viewRoleMode);
+  render();
+}
+
+function clearLocalTestData() {
+  const confirmed = window.confirm(
+    "Lokale testdata op dit apparaat wissen? Je login, leden en thema blijven staan."
+  );
+  if (!confirmed) return;
+
+  Object.keys(localStorage).forEach((key) => {
+    if (
+      key === "reisapp_active_stage" ||
+      key === "reisapp_dashboard_follow" ||
+      key === "reisapp_driving" ||
+      key === "reisapp_gps_status" ||
+      key === "reisapp_live_track" ||
+      key === "lotte_items" ||
+      key === "lotte_open" ||
+      key.startsWith("reisapp_stage_diary_") ||
+      key.startsWith("stage_")
+    ) {
+      localStorage.removeItem(key);
+    }
+  });
+
+  activeStage = 0;
+  driving = false;
+  dashboardFollowLive = true;
+  gpsStatus = "Lokale testdata is gewist op dit apparaat.";
+  remoteGpsPoints = [];
+  if (locationTimer) clearInterval(locationTimer);
+  locationTimer = null;
+  resetTotalRoute();
+  resetDashboardRoute();
+  authMessage = "Lokale testdata is gewist op dit apparaat.";
   render();
 }
 
@@ -533,14 +570,20 @@ async function initAuth() {
     authUser = session?.user || null;
     if (authUser) {
       await loadRemoteState();
+      startSharedGpsRefresh();
     } else {
       remoteTrip = null;
       remoteMembers = null;
+      remoteGpsPoints = [];
+      stopSharedGpsRefresh();
       render();
     }
   });
 
-  if (authUser) await loadRemoteState();
+  if (authUser) {
+    await loadRemoteState();
+    startSharedGpsRefresh();
+  }
   authReady = true;
   render();
 }
@@ -699,6 +742,7 @@ async function loadRemoteState() {
   remoteMembers = members || [];
   currentUserId = authUser.id;
   await loadRemoteDiary();
+  await loadRemoteGps();
 }
 
 async function loadRemoteDiary() {
@@ -742,6 +786,45 @@ async function loadRemoteDiary() {
   );
 
   remoteDiaryEntries = entries || [];
+}
+
+async function loadRemoteGps() {
+  if (!isCloudMode() || !remoteTrip) return;
+
+  const { data, error } = await supabaseClient
+    .from("gps_points")
+    .select("id, user_id, lat, lon, accuracy_m, source, recorded_at")
+    .eq("trip_id", remoteTrip.id)
+    .order("recorded_at", { ascending: true })
+    .limit(1200);
+
+  if (error) {
+    authMessage = error.message;
+    remoteGpsPoints = [];
+    return;
+  }
+
+  remoteGpsPoints = data || [];
+}
+
+async function refreshSharedGpsTrack() {
+  if (!isCloudMode() || !authUser || !remoteTrip) return;
+  await loadRemoteGps();
+  const track = getSavedTrack();
+  if (!track.length) return;
+  const last = track[track.length - 1];
+  drawLivePosition(last, track);
+}
+
+function startSharedGpsRefresh() {
+  if (gpsRefreshTimer) clearInterval(gpsRefreshTimer);
+  gpsRefreshTimer = setInterval(refreshSharedGpsTrack, 300000);
+}
+
+function stopSharedGpsRefresh() {
+  if (!gpsRefreshTimer) return;
+  clearInterval(gpsRefreshTimer);
+  gpsRefreshTimer = null;
 }
 
 function renderAuthGate() {
@@ -1482,7 +1565,9 @@ function renderAdminPanel() {
 
       <div class="archive-actions">
         <button class="linkbtn mapsbtn" onclick="exportTravelArchive()">Reisarchief downloaden</button>
+        <button class="linkbtn stopbtn" onclick="clearLocalTestData()">Lokale testdata wissen</button>
         <p class="muted">Bundelt alle centrale dagboeknotities, teksten, foto's en admin-audio tot een exportbestand voor het fotoboek.</p>
+        <p class="muted">Lokale testdata wissen raakt alleen dit apparaat. Centrale reisdata wis je bewust via het Supabase reset-script.</p>
       </div>
 
       <div class="member-add-row">
@@ -1809,6 +1894,7 @@ function initDashboardRoute() {
     dashboardRouteMap.setView([61.4, 9.2], 5);
   }
 
+  refreshSharedGpsTrack();
   restoreDashboardTrack();
   updateDashboardFollowControl();
   setTimeout(() => dashboardRouteMap.invalidateSize(), 80);
@@ -1830,6 +1916,7 @@ function initTotalRoute() {
     addSatelliteLayer(totalRouteMap);
 
     renderTotalRoute();
+    refreshSharedGpsTrack();
     restoreLiveTrack();
   }
 
@@ -1942,13 +2029,45 @@ async function renderTotalRoute() {
 }
 
 function getSavedTrack() {
+  if (isCloudMode() && remoteTrip && remoteGpsPoints.length) {
+    return remoteGpsPoints.map((point) => ({
+      lat: point.lat,
+      lon: point.lon,
+      accuracy: point.accuracy_m || 0,
+      time: new Date(point.recorded_at).getTime(),
+      userId: point.user_id,
+    }));
+  }
+
   return JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
 }
 
-function saveTrackPoint(point) {
-  const track = getSavedTrack();
-  track.push(point);
-  localStorage.setItem("reisapp_live_track", JSON.stringify(track.slice(-1200)));
+async function saveTrackPoint(point) {
+  const localTrack = JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
+  localTrack.push(point);
+  localStorage.setItem("reisapp_live_track", JSON.stringify(localTrack.slice(-1200)));
+
+  if (!isCloudMode() || !remoteTrip || !authUser || !canUpdateGps()) return { shared: false };
+
+  const row = {
+    trip_id: remoteTrip.id,
+    user_id: authUser.id,
+    lat: point.lat,
+    lon: point.lon,
+    accuracy_m: point.accuracy,
+    source: "browser",
+    recorded_at: new Date(point.time).toISOString(),
+  };
+
+  const { data, error } = await supabaseClient
+    .from("gps_points")
+    .insert(row)
+    .select("id, user_id, lat, lon, accuracy_m, source, recorded_at")
+    .single();
+
+  if (error) return { shared: false, error };
+  remoteGpsPoints = [...remoteGpsPoints, data].slice(-1200);
+  return { shared: true };
 }
 
 function restoreLiveTrack() {
@@ -2073,7 +2192,7 @@ function updateLivePosition() {
 
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const point = {
           lat: position.coords.latitude,
           lon: position.coords.longitude,
@@ -2081,11 +2200,15 @@ function updateLivePosition() {
           time: Date.now(),
         };
 
-        saveTrackPoint(point);
+        const saved = await saveTrackPoint(point);
         setDashboardFollowLive(true);
         drawLivePosition(point);
         if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
-        setGpsStatus(`GPS-punt gezet. Nauwkeurigheid ongeveer ${point.accuracy} meter.`);
+        setGpsStatus(
+          saved.shared
+            ? `GPS-punt gedeeld. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+            : `GPS-punt gezet op dit apparaat. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+        );
         resolve(true);
       },
       (error) => {
