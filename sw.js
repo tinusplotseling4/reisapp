@@ -1,9 +1,9 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v2-dashboard-map";
+const CACHE_NAME = "rondreis-noorwegen-2026-v3-gps-status";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260708-dashboard-map",
-  "./app.js?v=20260708-dashboard-map",
+  "./style.css?v=20260708-gps-status",
+  "./app.js?v=20260708-gps-status",
   "./manifest.webmanifest",
   "./data/stages.js",
   "./data/app-config.public.js",

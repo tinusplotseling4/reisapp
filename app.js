@@ -48,6 +48,7 @@ let dashboardPositionMarker;
 let dashboardTrackLine;
 let dashboardFollowLive = localStorage.getItem("reisapp_dashboard_follow") !== "false";
 let dashboardProgrammaticMove = false;
+let gpsStatus = localStorage.getItem("reisapp_gps_status") || "Nog geen GPS-punt gemeten op dit apparaat.";
 let locationTimer;
 let diaryDraft = {
   stageIndex: null,
@@ -875,10 +876,12 @@ function toggleDriving(mapsUrl = "") {
   render();
 
   if (shouldStart) {
+    setGpsStatus("Etappe gestart. Eerste GPS-punt wordt opgehaald.");
     startLocationTracking();
   } else if (locationTimer) {
     clearInterval(locationTimer);
     locationTimer = null;
+    setGpsStatus("Etappe gestopt. GPS-tracking staat uit.");
     updateLiveMapStyles();
   }
 
@@ -1420,6 +1423,15 @@ function setRouteStatus(message) {
   if (status) status.textContent = message;
 }
 
+function setGpsStatus(message) {
+  gpsStatus = message;
+  localStorage.setItem("reisapp_gps_status", message);
+
+  const dashboardStatus = document.getElementById("dashboardGpsStatus");
+  if (dashboardStatus) dashboardStatus.textContent = message;
+  setRouteStatus(message);
+}
+
 function centerTotalRoute() {
   if (totalRouteMap && totalRouteBounds) {
     totalRouteMap.fitBounds(totalRouteBounds, { padding: [24, 24] });
@@ -1749,36 +1761,50 @@ function renderHeroTrackOverlay() {
 
 function updateLivePosition() {
   if (!navigator.geolocation) {
-    setRouteStatus("GPS is niet beschikbaar in deze browser.");
-    return;
+    setGpsStatus("GPS is niet beschikbaar in deze browser.");
+    return Promise.resolve(false);
   }
 
   if (!window.isSecureContext) {
-    setRouteStatus("GPS werkt alleen via https, localhost of een browser die lokale bestanden vertrouwt.");
-    return;
+    setGpsStatus("GPS werkt alleen via https of in de geinstalleerde app.");
+    return Promise.resolve(false);
   }
 
-  navigator.geolocation.getCurrentPosition(
-    (position) => {
-      const point = {
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
-        accuracy: Math.round(position.coords.accuracy || 0),
-        time: Date.now(),
-      };
+  setGpsStatus("GPS wordt opgehaald. Geef toestemming als je telefoon daarom vraagt.");
 
-      saveTrackPoint(point);
-      drawLivePosition(point);
-      if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
-      setRouteStatus(`GPS bijgewerkt. Nauwkeurigheid ongeveer ${point.accuracy} meter.`);
-    },
-    () => setRouteStatus("GPS-toegang is geweigerd of niet beschikbaar."),
-    {
-      enableHighAccuracy: true,
-      maximumAge: 240000,
-      timeout: 20000,
-    }
-  );
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const point = {
+          lat: position.coords.latitude,
+          lon: position.coords.longitude,
+          accuracy: Math.round(position.coords.accuracy || 0),
+          time: Date.now(),
+        };
+
+        saveTrackPoint(point);
+        setDashboardFollowLive(true);
+        drawLivePosition(point);
+        if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
+        setGpsStatus(`GPS-punt gezet. Nauwkeurigheid ongeveer ${point.accuracy} meter.`);
+        resolve(true);
+      },
+      (error) => {
+        const messages = {
+          1: "GPS-toegang is geweigerd. Zet locatie aan voor deze app/site in je telefooninstellingen.",
+          2: "Je telefoon kon nu geen GPS-positie bepalen. Probeer buiten of met beter bereik.",
+          3: "GPS duurde te lang. Probeer nogmaals met de app open in beeld.",
+        };
+        setGpsStatus(messages[error.code] || "GPS-toegang is geweigerd of niet beschikbaar.");
+        resolve(false);
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 25000,
+      }
+    );
+  });
 }
 
 function startLocationTracking() {
@@ -1804,6 +1830,11 @@ function renderDashboard() {
 
     <section class="trip-hero">
       <div id="dashboardRouteMap" class="hero-map dashboard-route-map" aria-label="Live GPS-kaart van de reis"></div>
+      <div class="dashboard-gps-panel">
+        <p class="eyebrow">GPS tracking</p>
+        <p id="dashboardGpsStatus">${gpsStatus}</p>
+        <button class="linkbtn mapsbtn" onclick="updateLivePosition()">GPS nu meten</button>
+      </div>
     </section>
 
     <section class="dashboard">
