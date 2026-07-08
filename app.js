@@ -33,6 +33,8 @@ let authUser = null;
 let authMessage = "";
 let remoteTrip = null;
 let remoteMembers = null;
+let remoteDiaryEntries = [];
+let remoteDiaryMedia = [];
 let newMemberName = "";
 let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
@@ -207,6 +209,10 @@ function canPreviewRoles() {
 function getCurrentRole() {
   if (canPreviewRoles() && viewRoleMode && VIEW_ROLES[viewRoleMode]) return viewRoleMode;
   return getActualRole();
+}
+
+function getMemberName(userId) {
+  return getMembers().find((member) => member.id === userId)?.name || "Reiziger";
 }
 
 function setViewRoleMode(role) {
@@ -692,6 +698,50 @@ async function loadRemoteState() {
 
   remoteMembers = members || [];
   currentUserId = authUser.id;
+  await loadRemoteDiary();
+}
+
+async function loadRemoteDiary() {
+  if (!isCloudMode() || !remoteTrip) return;
+
+  const { data: entries, error: entriesError } = await supabaseClient
+    .from("diary_entries")
+    .select("id, stage_index, user_id, note, transcript, created_at, updated_at")
+    .eq("trip_id", remoteTrip.id)
+    .order("created_at", { ascending: false });
+
+  if (entriesError) {
+    authMessage = entriesError.message;
+    remoteDiaryEntries = [];
+    remoteDiaryMedia = [];
+    return;
+  }
+
+  const entryIds = (entries || []).map((entry) => entry.id);
+  let media = [];
+  if (entryIds.length) {
+    const { data: mediaRows, error: mediaError } = await supabaseClient
+      .from("diary_media")
+      .select("id, diary_entry_id, kind, storage_path, admin_only, created_at")
+      .in("diary_entry_id", entryIds)
+      .order("created_at", { ascending: true });
+
+    if (mediaError) {
+      authMessage = mediaError.message;
+    } else {
+      media = mediaRows || [];
+    }
+  }
+
+  remoteDiaryMedia = await Promise.all(
+    media.map(async (item) => {
+      const bucket = item.kind === "audio" ? "diary-audio" : "diary-photos";
+      const { data } = await supabaseClient.storage.from(bucket).createSignedUrl(item.storage_path, 60 * 60);
+      return { ...item, url: data?.signedUrl || "" };
+    })
+  );
+
+  remoteDiaryEntries = entries || [];
 }
 
 function renderAuthGate() {
@@ -934,6 +984,28 @@ function getStageDiaryKey(index) {
 }
 
 function getStageDiary(index) {
+  if (isCloudMode() && remoteTrip) {
+    return remoteDiaryEntries
+      .filter((entry) => entry.stage_index === index)
+      .map((entry) => {
+        const media = remoteDiaryMedia.filter((item) => item.diary_entry_id === entry.id);
+        return {
+          id: entry.id,
+          created: new Date(entry.created_at).toLocaleString("nl-NL", {
+            day: "2-digit",
+            month: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          author: getMemberName(entry.user_id),
+          note: entry.note || "",
+          transcript: entry.transcript || "",
+          photos: media.filter((item) => item.kind === "photo").map((item) => item.url).filter(Boolean),
+          audioData: media.find((item) => item.kind === "audio")?.url || "",
+        };
+      });
+  }
+
   return JSON.parse(localStorage.getItem(getStageDiaryKey(index)) || "[]");
 }
 
@@ -1000,7 +1072,19 @@ function addDiaryEntry(index, entry) {
   saveStageDiary(index, entries);
 }
 
-function updateDiaryEntry(stageIndex, entryId, value) {
+async function updateDiaryEntry(stageIndex, entryId, value) {
+  if (isCloudMode() && remoteTrip) {
+    const { error } = await supabaseClient
+      .from("diary_entries")
+      .update({ note: value, updated_at: new Date().toISOString() })
+      .eq("id", entryId);
+    if (error) authMessage = error.message;
+    await loadRemoteDiary();
+    renderStages();
+    renderDashboardOnly();
+    return;
+  }
+
   const entries = getStageDiary(stageIndex).map((entry) =>
     entry.id === entryId ? { ...entry, note: value } : entry
   );
@@ -1031,12 +1115,103 @@ function removeDiaryPhoto(index) {
   renderStages();
 }
 
-function saveDiaryDraft() {
+function dataUrlToBlob(dataUrl) {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);base64/)?.[1] || "application/octet-stream";
+  const bytes = atob(base64 || "");
+  const array = new Uint8Array(bytes.length);
+  for (let index = 0; index < bytes.length; index++) array[index] = bytes.charCodeAt(index);
+  return new Blob([array], { type: mime });
+}
+
+function getFileExtensionFromDataUrl(dataUrl, fallback = "bin") {
+  const mime = dataUrl.match(/data:(.*?);base64/)?.[1] || "";
+  const extension = mime.split("/")[1]?.split(";")[0] || fallback;
+  if (extension === "jpeg") return "jpg";
+  if (extension === "webm") return "webm";
+  return extension.replace(/[^a-z0-9]/gi, "") || fallback;
+}
+
+async function uploadDiaryMedia(entryId, stageIndex, items, kind) {
+  const bucket = kind === "audio" ? "diary-audio" : "diary-photos";
+  const rows = [];
+
+  for (let index = 0; index < items.length; index++) {
+    const dataUrl = items[index];
+    const fallbackExtension = kind === "audio" ? "webm" : "jpg";
+    const extension = getFileExtensionFromDataUrl(dataUrl, fallbackExtension);
+    const path = `${remoteTrip.id}/${stageIndex}/${entryId}/${kind}-${Date.now()}-${index}.${extension}`;
+    const blob = dataUrlToBlob(dataUrl);
+    const { error: uploadError } = await supabaseClient.storage.from(bucket).upload(path, blob, {
+      contentType: blob.type || "application/octet-stream",
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+
+    rows.push({
+      diary_entry_id: entryId,
+      kind,
+      storage_path: path,
+      admin_only: kind === "audio",
+    });
+  }
+
+  if (rows.length) {
+    const { error } = await supabaseClient.from("diary_media").insert(rows);
+    if (error) throw error;
+  }
+}
+
+async function saveDiaryDraft() {
   const note = diaryDraft.note.trim();
   const transcript = diaryDraft.transcript.trim();
   const hasContent = note || transcript || diaryDraft.photos.length || diaryDraft.audioData;
 
   if (!hasContent) return;
+
+  if (isCloudMode() && remoteTrip && authUser) {
+    authMessage = "Dagboeknotitie wordt opgeslagen...";
+    renderStages();
+
+    const { data: entry, error } = await supabaseClient
+      .from("diary_entries")
+      .insert({
+        trip_id: remoteTrip.id,
+        stage_index: diaryDraft.stageIndex,
+        user_id: authUser.id,
+        note,
+        transcript,
+      })
+      .select("*")
+      .single();
+
+    if (error) {
+      authMessage = `Opslaan in Supabase lukte niet: ${error.message}. Notitie lokaal bewaard.`;
+      addDiaryEntry(diaryDraft.stageIndex, {
+        note,
+        photos: diaryDraft.photos,
+        audioData: diaryDraft.audioData,
+        transcript,
+      });
+      resetDiaryDraft(diaryDraft.stageIndex);
+      renderStages();
+      return;
+    }
+
+    try {
+      await uploadDiaryMedia(entry.id, diaryDraft.stageIndex, diaryDraft.photos, "photo");
+      if (diaryDraft.audioData) await uploadDiaryMedia(entry.id, diaryDraft.stageIndex, [diaryDraft.audioData], "audio");
+      authMessage = "Dagboeknotitie opgeslagen voor het reisarchief.";
+    } catch (mediaError) {
+      authMessage = `Notitie opgeslagen, maar media uploaden lukte niet: ${mediaError.message}`;
+    }
+
+    await loadRemoteDiary();
+    resetDiaryDraft(diaryDraft.stageIndex);
+    renderStages();
+    renderDashboardOnly();
+    return;
+  }
 
   addDiaryEntry(diaryDraft.stageIndex, {
     note,
@@ -1046,6 +1221,62 @@ function saveDiaryDraft() {
   });
   resetDiaryDraft(diaryDraft.stageIndex);
   renderStages();
+}
+
+function renderDashboardOnly() {
+  const summary = document.getElementById("summary");
+  if (!summary || !document.getElementById("map")?.classList.contains("active")) return;
+  resetDashboardRoute();
+  summary.innerHTML = renderDashboard();
+  setTimeout(initDashboardRoute, 0);
+}
+
+function getTravelArchiveData() {
+  return {
+    title: TRIP_TITLE,
+    exportedAt: new Date().toISOString(),
+    trip: remoteTrip
+      ? {
+          id: remoteTrip.id,
+          slug: remoteTrip.slug,
+          title: remoteTrip.title,
+        }
+      : null,
+    stages: STAGES.map((stage, index) => ({
+      day: stage.day,
+      title: stage.title,
+      from: stage.from,
+      to: stage.to,
+      route: stage.route,
+      diary: getStageDiary(index).map((entry) => ({
+        created: entry.created,
+        author: entry.author || "",
+        note: entry.note || "",
+        transcript: entry.transcript || "",
+        photos: entry.photos || [],
+        audio: canSeeAdminFiles() ? entry.audioData || "" : "",
+      })),
+    })),
+  };
+}
+
+function downloadTextFile(filename, content, type = "application/json") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportTravelArchive() {
+  if (isCloudMode() && remoteTrip) await loadRemoteDiary();
+  const archive = getTravelArchiveData();
+  const stamp = new Date().toISOString().slice(0, 10);
+  downloadTextFile(`rondreis-noorwegen-2026-archief-${stamp}.json`, JSON.stringify(archive, null, 2));
 }
 
 function blobToDataUrl(blob) {
@@ -1248,6 +1479,11 @@ function renderAdminPanel() {
       </div>
 
       ${renderDisplayControl()}
+
+      <div class="archive-actions">
+        <button class="linkbtn mapsbtn" onclick="exportTravelArchive()">Reisarchief downloaden</button>
+        <p class="muted">Bundelt alle centrale dagboeknotities, teksten, foto's en admin-audio tot een exportbestand voor het fotoboek.</p>
+      </div>
 
       <div class="member-add-row">
         <select onchange="updateNewMember('role', this.value)">
@@ -2046,7 +2282,7 @@ function renderStages() {
                   .map(
                     (entry) => `
                       <div class="diary-entry">
-                        <span>${entry.created}</span>
+                        <span>${entry.created}${entry.author ? ` - ${entry.author}` : ""}</span>
                         <textarea onchange="updateDiaryEntry(${activeStage}, ${entry.id}, this.value)" placeholder="Wat willen we onthouden van deze dag?">${entry.note}</textarea>
                         ${
                           entry.transcript

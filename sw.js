@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v10-route-connect";
+const CACHE_NAME = "rondreis-noorwegen-2026-v11-diary-archive";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260708-route-connect",
-  "./app.js?v=20260708-route-connect",
+  "./style.css?v=20260708-diary-archive",
+  "./app.js?v=20260708-diary-archive",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260708-route-connect",
+  "./data/stages.js?v=20260708-diary-archive",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

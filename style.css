@@ -1113,6 +1113,13 @@ button:hover,
   gap: 18px;
 }
 
+.archive-actions {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  margin: 2px 0 4px;
+}
+
 .admin-head {
   display: flex;
   justify-content: space-between;

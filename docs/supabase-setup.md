@@ -39,6 +39,18 @@ Die reis wordt later gekoppeld aan de bestaande Noorwegen-route in `data/stages.
 
 ## 5. Volgende bouwstap
 
+## 5. Dagboekmedia opslaan
+
+Voor centrale foto/audio-opslag:
+
+1. Open de Supabase SQL editor.
+2. Plak de inhoud van `docs/supabase-migration-diary-storage.sql`.
+3. Voer het script uit.
+
+Dit maakt de private buckets `diary-photos` en `diary-audio` en zet de juiste policies.
+
+## 6. Volgende bouwstap
+
 Na deze setup bouwen we in de app:
 
 - login met e-mail en wachtwoord;
@@ -46,4 +58,3 @@ Na deze setup bouwen we in de app:
 - rollen uit `trip_members` lezen;
 - beheer alleen tonen voor administrators;
 - lokale data stap voor stap synchroniseren met Supabase.
-
