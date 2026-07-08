@@ -793,6 +793,24 @@ function poiKey(stageIndex, poiIndex) {
   return `stage_${stageIndex}_poi_${poiIndex}`;
 }
 
+function getGoogleNavigationUrl(stage) {
+  const points = stage.route || [];
+  const destination = points[points.length - 1] || stage.to;
+  const waypoints = points.slice(1, -1).slice(0, 9);
+  const params = new URLSearchParams({
+    api: "1",
+    destination,
+    travelmode: "driving",
+    dir_action: "navigate",
+  });
+
+  if (waypoints.length) {
+    params.set("waypoints", waypoints.join("|"));
+  }
+
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
 function toggleDriving(mapsUrl = "") {
   const shouldStart = !driving;
   driving = shouldStart;
@@ -1603,12 +1621,13 @@ function renderStages() {
   const groceryStop = stage.route[Math.max(0, stage.route.length - 2)] || stage.to;
   const tankStop = stage.route[1] || stage.from;
   const routeText = stage.route.join(" -> ");
+  const navigationUrl = getGoogleNavigationUrl(stage);
 
   document.getElementById("stageList").innerHTML = `
     <div class="card stage-detail">
       ${
         canControlRoute()
-          ? `<button class="linkbtn stage-start-toggle ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving('${stage.maps}')">
+          ? `<button class="linkbtn stage-start-toggle ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving('${navigationUrl}')">
               ${driving ? "Stop etappe" : "Start etappe"}
             </button>`
           : ""
