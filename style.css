@@ -938,6 +938,10 @@ button:hover,
   display: none;
 }
 
+.diary-hidden-input {
+  display: none;
+}
+
 .diary-compose-text {
   width: 100%;
   min-height: 112px;

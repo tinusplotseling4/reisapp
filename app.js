@@ -938,6 +938,12 @@ function setDiaryMode(mode) {
   renderStages();
 }
 
+function openDiaryPhotoInput(mode) {
+  diaryDraft.mode = mode;
+  const inputId = mode === "camera" ? "diaryCameraInput" : "diaryPhotosInput";
+  document.getElementById(inputId)?.click();
+}
+
 function updateDiaryDraftNote(value) {
   diaryDraft.note = value;
 }
@@ -1136,27 +1142,14 @@ function renderDiaryComposer(stageIndex) {
   return `
     <div class="diary-composer">
       <div class="diary-options">
-        <button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="setDiaryMode('camera')">Foto maken</button>
-        <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="setDiaryMode('photos')">Foto's kiezen</button>
+        <button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="openDiaryPhotoInput('camera')">Foto maken</button>
+        <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>
         <button class="linkbtn ${diaryDraft.mode === "text" ? "primary" : ""}" onclick="setDiaryMode('text')">Tekst</button>
         <button class="linkbtn ${diaryDraft.mode === "voice" ? "primary" : ""}" onclick="setDiaryMode('voice')">Microfoon</button>
       </div>
 
-      ${
-        diaryDraft.mode === "camera"
-          ? `<label class="diary-upload">Camera openen
-              <input type="file" accept="image/*" capture="environment" onchange="handleDiaryPhotos(this)">
-            </label>`
-          : ""
-      }
-
-      ${
-        diaryDraft.mode === "photos"
-          ? `<label class="diary-upload">Foto's kiezen
-              <input type="file" accept="image/*" multiple onchange="handleDiaryPhotos(this)">
-            </label>`
-          : ""
-      }
+      <input id="diaryCameraInput" class="diary-hidden-input" type="file" accept="image/*" capture="environment" onchange="handleDiaryPhotos(this)">
+      <input id="diaryPhotosInput" class="diary-hidden-input" type="file" accept="image/*" multiple onchange="handleDiaryPhotos(this)">
 
       ${
         diaryDraft.mode === "text" || diaryDraft.mode === "voice"
