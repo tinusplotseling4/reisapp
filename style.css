@@ -624,6 +624,37 @@ button:hover,
   justify-content: flex-end;
 }
 
+.view-mode-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.view-mode-control span {
+  color: #7dd3fc;
+  text-transform: uppercase;
+}
+
+.view-mode-btn {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.view-mode-btn.active {
+  background: var(--green);
+  color: #021107;
+}
+
 .install-btn {
   min-height: 38px;
   align-self: end;

@@ -11,6 +11,12 @@ const INVITE_ROLES = {
   follower: "Volger",
 };
 
+const VIEW_ROLES = {
+  "": "Eigen weergave",
+  leader: "Reisleider",
+  follower: "Thuisblijver",
+};
+
 const DEFAULT_MEMBERS = [
   { id: "jeroen", name: "Jeroen", role: "admin" },
   { id: "moeder", name: "Mam", role: "follower" },
@@ -29,6 +35,7 @@ let remoteMembers = null;
 let newMemberName = "";
 let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
+let viewRoleMode = localStorage.getItem("reisapp_view_role") || "";
 let themeMode = localStorage.getItem("reisapp_theme") || "dark";
 let activeStage = Number(localStorage.getItem("reisapp_active_stage") || 0);
 let driving = localStorage.getItem("reisapp_driving") === "true";
@@ -182,8 +189,23 @@ function getCurrentUser() {
   return members.find((member) => member.id === currentUserId) || members[0];
 }
 
-function getCurrentRole() {
+function getActualRole() {
   return getCurrentUser().role;
+}
+
+function canPreviewRoles() {
+  return getActualRole() === "admin";
+}
+
+function getCurrentRole() {
+  if (canPreviewRoles() && viewRoleMode && VIEW_ROLES[viewRoleMode]) return viewRoleMode;
+  return getActualRole();
+}
+
+function setViewRoleMode(role) {
+  viewRoleMode = Object.prototype.hasOwnProperty.call(VIEW_ROLES, role) ? role : "";
+  localStorage.setItem("reisapp_view_role", viewRoleMode);
+  render();
 }
 
 function setCurrentUser(id) {
@@ -441,6 +463,25 @@ async function installApp() {
   await deferredInstallPrompt.userChoice;
   deferredInstallPrompt = null;
   render();
+}
+
+function renderViewModeControl() {
+  if (!canPreviewRoles()) return "";
+
+  return `
+    <div class="view-mode-control" aria-label="Bekijk app als">
+      <span>Bekijk als</span>
+      ${Object.entries(VIEW_ROLES)
+        .map(
+          ([role, label]) => `
+            <button class="view-mode-btn ${viewRoleMode === role ? "active" : ""}" onclick="setViewRoleMode('${role}')">
+              ${label}
+            </button>
+          `
+        )
+        .join("")}
+    </div>
+  `;
 }
 
 if (window.matchMedia) {
@@ -766,7 +807,7 @@ function showTab(id) {
   if (isCloudMode() && !authUser) {
     id = "map";
   }
-  if (id === "admin" && getCurrentRole() !== "admin") {
+  if (id === "admin" && getActualRole() !== "admin") {
     showTab("map");
     return;
   }
@@ -1244,11 +1285,12 @@ function renderNavigationForRole() {
     button.style.display = isCloudMode() && !authUser ? "none" : "inline-flex";
   });
   if (adminButton) {
-    adminButton.style.display = getCurrentRole() === "admin" && (!isCloudMode() || authUser) ? "inline-flex" : "none";
+    adminButton.style.display = getActualRole() === "admin" && (!isCloudMode() || authUser) ? "inline-flex" : "none";
   }
   if (themeSlot) {
     themeSlot.innerHTML = `
       <div class="header-tools">
+        ${renderViewModeControl()}
         ${
           deferredInstallPrompt
             ? `<button class="linkbtn install-btn" onclick="installApp()">App installeren</button>`
@@ -1316,13 +1358,19 @@ function getRoleDashboardText() {
 
 function renderUserSwitcher() {
   const current = getCurrentUser();
+  const activeRole = getCurrentRole();
+  const previewText =
+    canPreviewRoles() && viewRoleMode
+      ? `<p class="muted">Weergave als ${VIEW_ROLES[viewRoleMode]}. Je echte rol blijft Administrator.</p>`
+      : "";
 
   return `
     <section class="role-strip">
       <div>
         <p class="eyebrow">Ingelogd als</p>
         <h2>${current.name}</h2>
-        <p class="muted">${ROLES[current.role]} - ${getRoleDashboardText()}</p>
+        <p class="muted">${ROLES[activeRole]} - ${getRoleDashboardText()}</p>
+        ${previewText}
       </div>
       ${isCloudMode() ? `<button class="linkbtn" onclick="signOut()">Uitloggen</button>` : ""}
     </section>
