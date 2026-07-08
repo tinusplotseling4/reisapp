@@ -843,6 +843,11 @@ function canMarkVisited() {
   return role === "admin" || role === "leader" || role === "traveler";
 }
 
+function canUpdateGps() {
+  const role = getCurrentRole();
+  return role === "admin" || role === "leader" || role === "traveler";
+}
+
 function stars(n) {
   return "*".repeat(n) + "-".repeat(5 - n);
 }
@@ -1830,11 +1835,15 @@ function renderDashboard() {
 
     <section class="trip-hero">
       <div id="dashboardRouteMap" class="hero-map dashboard-route-map" aria-label="Live GPS-kaart van de reis"></div>
-      <div class="dashboard-gps-panel">
-        <p class="eyebrow">GPS tracking</p>
-        <p id="dashboardGpsStatus">${gpsStatus}</p>
-        <button class="linkbtn mapsbtn" onclick="updateLivePosition()">GPS nu meten</button>
-      </div>
+      ${
+        canUpdateGps()
+          ? `<div class="dashboard-gps-panel">
+              <p class="eyebrow">GPS tracking</p>
+              <p id="dashboardGpsStatus">${gpsStatus}</p>
+              <button class="linkbtn mapsbtn" onclick="updateLivePosition()">GPS nu meten</button>
+            </div>`
+          : ""
+      }
     </section>
 
     <section class="dashboard">
