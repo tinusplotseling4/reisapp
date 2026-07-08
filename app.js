@@ -793,10 +793,15 @@ function poiKey(stageIndex, poiIndex) {
   return `stage_${stageIndex}_poi_${poiIndex}`;
 }
 
-function toggleDriving() {
-  driving = !driving;
+function toggleDriving(mapsUrl = "") {
+  const shouldStart = !driving;
+  driving = shouldStart;
   localStorage.setItem("reisapp_driving", String(driving));
   render();
+
+  if (shouldStart && mapsUrl) {
+    window.open(mapsUrl, "_blank");
+  }
 }
 
 function selectStage(index) {
@@ -1603,7 +1608,7 @@ function renderStages() {
     <div class="card stage-detail">
       ${
         canControlRoute()
-          ? `<button class="linkbtn stage-start-toggle ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving()">
+          ? `<button class="linkbtn stage-start-toggle ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving('${stage.maps}')">
               ${driving ? "Stop etappe" : "Start etappe"}
             </button>`
           : ""
