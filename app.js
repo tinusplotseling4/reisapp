@@ -137,6 +137,10 @@ function getInviteLink(member) {
   return url.toString();
 }
 
+function getAuthRedirectUrl() {
+  return getAppShareBaseUrl();
+}
+
 function getWhatsAppText(member) {
   const role = ROLES[member.role] || member.role;
   return [
@@ -616,6 +620,7 @@ async function signUpWithPassword() {
     email,
     password,
     options: {
+      emailRedirectTo: getAuthRedirectUrl(),
       data: {
         display_name: name || email.split("@")[0],
       },
