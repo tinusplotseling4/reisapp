@@ -682,9 +682,18 @@ button:hover,
 
 .role-switcher option,
 .theme-control option,
+.member-add-row select option,
 .member-row select option {
-  background: var(--shell);
-  color: var(--text);
+  background: #05080d;
+  color: #f3f8ff;
+}
+
+.role-switcher option:checked,
+.theme-control option:checked,
+.member-add-row select option:checked,
+.member-row select option:checked {
+  background: #174c82;
+  color: #fff;
 }
 
 .theme-control {
