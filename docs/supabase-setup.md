@@ -57,7 +57,30 @@ Wil je de gedeelde reisdata schoonmaken zonder leden, rollen en uitnodigingslink
 
 Dit wist centrale GPS-punten, bezochte bezienswaardigheden, etappevoortgang, dagboeknotities en dagboekmedia voor `noorwegen-2026`.
 
-## 7. Volgende bouwstap
+## 7. Live brandstofprijzen Duitsland
+
+De app gebruikt voor Duitsland een Supabase Edge Function:
+
+```text
+supabase/functions/fuel-prices
+```
+
+Deze functie roept Tankerkönig / MTS-K aan voor actuele Duitse diesel-, E5- en E10-prijzen. De Tankerkönig API-key mag niet in GitHub of `data/app-config.public.js`; zet hem als Supabase secret:
+
+```bash
+supabase secrets set TANKERKOENIG_API_KEY=je-persoonlijke-key
+supabase functions deploy fuel-prices
+```
+
+De publieke app-config verwijst daarna naar:
+
+```text
+https://itkxjlqucmqgxuzxbzrx.functions.supabase.co/fuel-prices
+```
+
+Voor Nederland, Denemarken, Zweden en Noorwegen zijn later aparte databronnen nodig. De huidige proxy geeft bewust alleen Duitse live-prijzen terug.
+
+## 8. Volgende bouwstap
 
 Na deze setup bouwen we in de app:
 

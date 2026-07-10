@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v19-fuel-nearby";
+const CACHE_NAME = "rondreis-noorwegen-2026-v20-fuel-proxy";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260710-fuel-nearby",
-  "./app.js?v=20260710-fuel-nearby",
+  "./style.css?v=20260710-fuel-proxy",
+  "./app.js?v=20260710-fuel-proxy",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260710-fuel-nearby",
+  "./data/stages.js?v=20260710-fuel-proxy",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

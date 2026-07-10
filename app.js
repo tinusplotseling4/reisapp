@@ -2580,7 +2580,8 @@ function renderFuelPriceLookup(fuelAdvice) {
                 `
               )
               .join("")}
-          </div>`
+          </div>
+          <p class="muted">Bron: Tankerkonig / MTS-K. Alleen Duitse actuele prijzen.</p>`
         : ""
     }
   `;
@@ -2652,10 +2653,11 @@ async function loadCheapFuelStations(stageIndex) {
       targetLabel,
     };
   } catch (error) {
+    window.open(getFuelSearchUrl(targetStop), "_blank", "noopener");
     fuelLookupState = {
       stageIndex,
       loading: false,
-      message: `Live prijscheck lukte niet: ${error.message}`,
+      message: `Live prijscheck lukte niet: ${error.message}. Ik heb daarom Google Maps rond het zoekgebied geopend.`,
       stations: [],
       targetLabel,
     };
