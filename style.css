@@ -1006,6 +1006,62 @@ button:hover,
   align-items: center;
 }
 
+.fuel-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  margin: 12px 0;
+}
+
+.fuel-control label {
+  display: grid;
+  gap: 6px;
+  min-width: 180px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.fuel-control select {
+  border: 0;
+  border-radius: 0;
+  background: var(--soft-bg);
+  color: var(--text);
+  padding: 10px;
+  font: inherit;
+  font-weight: 800;
+}
+
+.fuel-stop-list,
+.fuel-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.fuel-stop-list small {
+  display: block;
+}
+
+.fuel-message {
+  color: var(--gold);
+  font-weight: 850;
+}
+
+.fuel-result {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.fuel-result span {
+  color: var(--muted);
+}
+
 .diary-head {
   justify-content: space-between;
 }

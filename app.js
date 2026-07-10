@@ -25,6 +25,11 @@ const DEFAULT_MEMBERS = [
 ];
 
 const TRIP_TITLE = "Rondreis Noorwegen 2026";
+const FUEL_TYPES = {
+  diesel: "Diesel",
+  e10: "Benzine E10",
+  e5: "Benzine Euro95/E5",
+};
 
 let supabaseClient = null;
 let authReady = false;
@@ -53,6 +58,13 @@ let dashboardTrackLine;
 let dashboardFollowLive = localStorage.getItem("reisapp_dashboard_follow") !== "false";
 let dashboardProgrammaticMove = false;
 let gpsStatus = localStorage.getItem("reisapp_gps_status") || "Nog geen GPS-punt gemeten op dit apparaat.";
+let fuelType = localStorage.getItem("reisapp_fuel_type") || "diesel";
+let fuelLookupState = {
+  stageIndex: null,
+  loading: false,
+  message: "",
+  stations: [],
+};
 let locationTimer;
 let gpsRefreshTimer;
 let diaryDraft = {
@@ -2358,6 +2370,23 @@ function renderDashboard() {
   `;
 }
 
+function setFuelType(type) {
+  fuelType = FUEL_TYPES[type] ? type : "diesel";
+  localStorage.setItem("reisapp_fuel_type", fuelType);
+  fuelLookupState = {
+    stageIndex: activeStage,
+    loading: false,
+    message: "",
+    stations: [],
+  };
+  renderStages();
+}
+
+function getFuelSearchUrl(stop) {
+  const terms = ["cheap", fuelType === "diesel" ? "diesel" : "petrol", "station", "near", stop.search || stop.label].join(" ");
+  return `https://www.google.com/maps/search/${encodeURIComponent(terms)}`;
+}
+
 function getFuelAdvice(stage) {
   const routeText = `${stage.from} ${stage.to} ${stage.route.join(" ")}`.toLowerCase();
   const routeKm = Number(String(stage.km).match(/\d+/)?.[0] || 0);
@@ -2377,6 +2406,24 @@ function getFuelAdvice(stage) {
       title: "Volgooien in Duitsland, Denemarken overslaan",
       body: "Deze etappe is lang en loopt via Duitsland, Denemarken en Zweden. Tank in Duitsland nog vol, rij Denemarken bij voorkeur door met zo min mogelijk tanken, en vul daarna in Zweden weer bij. Denemarken is vaak duurder; check vlak voor vertrek nog even de actuele prijzen.",
       search: "Hamburg, Germany",
+      priceStops: [
+        {
+          label: "Hamburg-regio",
+          country: "Duitsland",
+          search: "Hamburg, Germany",
+          lat: 53.5511,
+          lng: 9.9937,
+          note: "Hoofdstop: hier volgooien voor Denemarken.",
+        },
+        {
+          label: "Malmo-regio",
+          country: "Zweden",
+          search: "Malmo, Sweden",
+          lat: 55.605,
+          lng: 13.0038,
+          note: "Bijvullen na Denemarken als de dag nog lang is.",
+        },
+      ],
     };
   }
 
@@ -2385,6 +2432,24 @@ function getFuelAdvice(stage) {
       title: "Eerst Zweden, Denemarken minimaal, daarna Duitsland",
       body: "Vul in Zweden voldoende bij voor de Deense doortocht. Tank in Denemarken alleen als het moet en plan de volgende volle tank in Duitsland. Zo voorkom je dat de duurste kilometers je tankstrategie bepalen.",
       search: "Malmo, Sweden",
+      priceStops: [
+        {
+          label: "Malmo-regio",
+          country: "Zweden",
+          search: "Malmo, Sweden",
+          lat: 55.605,
+          lng: 13.0038,
+          note: "Vul hier voldoende bij voor Denemarken.",
+        },
+        {
+          label: "Hamburg-regio",
+          country: "Duitsland",
+          search: "Hamburg, Germany",
+          lat: 53.5511,
+          lng: 9.9937,
+          note: "Volle tank plannen na de Deense doortocht.",
+        },
+      ],
     };
   }
 
@@ -2393,6 +2458,14 @@ function getFuelAdvice(stage) {
       title: "Houd minimaal halfvol aan",
       body: `Tank bij vertrek of rond ${tankStop}. In Noorwegen liever niet op reserve rijden; buiten grotere plaatsen zitten tankstations verder uit elkaar.`,
       search: tankStop,
+      priceStops: [
+        {
+          label: tankStop,
+          country: "Noorwegen",
+          search: tankStop,
+          note: "Prijs is minder belangrijk dan marge: liever halfvol blijven.",
+        },
+      ],
     };
   }
 
@@ -2401,6 +2474,13 @@ function getFuelAdvice(stage) {
       title: "Plan een tankmoment halverwege",
       body: `Deze etappe is lang genoeg om tanken apart te plannen. Zoek rond ${tankStop} en voorkom dat tanken je eindstop bepaalt.`,
       search: tankStop,
+      priceStops: [
+        {
+          label: tankStop,
+          search: tankStop,
+          note: "Logisch tankpunt halverwege de etappe.",
+        },
+      ],
     };
   }
 
@@ -2408,7 +2488,125 @@ function getFuelAdvice(stage) {
     title: "Tanken alleen als het logisch ligt",
     body: `Deze etappe is korter. Vertrek met voldoende marge en tank alleen rond ${tankStop} als het goed op de route ligt.`,
     search: tankStop,
+    priceStops: [
+      {
+        label: tankStop,
+        search: tankStop,
+        note: "Alleen gebruiken als het handig op de route ligt.",
+      },
+    ],
   };
+}
+
+function renderFuelPriceLookup(fuelAdvice) {
+  const stops = fuelAdvice.priceStops || [{ label: fuelAdvice.search, search: fuelAdvice.search }];
+  const state = fuelLookupState.stageIndex === activeStage ? fuelLookupState : { loading: false, message: "", stations: [] };
+  const proxyEnabled = Boolean(getConfig().fuelPriceProxyUrl);
+
+  return `
+    <div class="fuel-control">
+      <label>
+        <span>Brandstof</span>
+        <select onchange="setFuelType(this.value)">
+          ${Object.entries(FUEL_TYPES)
+            .map(([key, label]) => `<option value="${key}" ${fuelType === key ? "selected" : ""}>${label}</option>`)
+            .join("")}
+        </select>
+      </label>
+      <button class="linkbtn mapsbtn" onclick="loadCheapFuelStations(${activeStage})">
+        ${state.loading ? "Prijzen laden..." : "Goedkoopste tankstations"}
+      </button>
+    </div>
+
+    <div class="fuel-stop-list">
+      ${stops
+        .map(
+          (stop) => `
+            <a class="textlink" target="_blank" href="${getFuelSearchUrl(stop)}">
+              ${stop.label || stop.search}${stop.country ? ` (${stop.country})` : ""}
+            </a>
+            ${stop.note ? `<small class="muted">${stop.note}</small>` : ""}
+          `
+        )
+        .join("")}
+    </div>
+
+    ${!proxyEnabled ? `<p class="muted">Live prijzen zijn voorbereid, maar nog niet gekoppeld. Daarvoor gebruiken we straks een kleine prijs-proxy, zodat de API-key niet publiek in GitHub staat.</p>` : ""}
+    ${state.message ? `<p class="fuel-message">${state.message}</p>` : ""}
+    ${
+      state.stations.length
+        ? `<div class="fuel-results">
+            ${state.stations
+              .map(
+                (station) => `
+                  <a class="fuel-result" target="_blank" href="${station.mapsUrl || getFuelSearchUrl({ search: `${station.name} ${station.place || ""}` })}">
+                    <b>${station.price ? `€${Number(station.price).toFixed(3)}` : "Prijs onbekend"} · ${station.name || station.brand || "Tankstation"}</b>
+                    <span>${station.place || station.address || ""}${station.distanceKm ? ` · ${station.distanceKm} km` : ""}${station.isOpen === false ? " · gesloten" : ""}</span>
+                  </a>
+                `
+              )
+              .join("")}
+          </div>`
+        : ""
+    }
+  `;
+}
+
+async function loadCheapFuelStations(stageIndex) {
+  const stage = STAGES[stageIndex];
+  const fuelAdvice = getFuelAdvice(stage);
+  const stops = fuelAdvice.priceStops || [{ label: fuelAdvice.search, search: fuelAdvice.search }];
+  const proxyUrl = getConfig().fuelPriceProxyUrl;
+
+  fuelLookupState = {
+    stageIndex,
+    loading: true,
+    message: "Goedkoopste tankstations worden opgehaald...",
+    stations: [],
+  };
+  renderStages();
+
+  if (!proxyUrl) {
+    const firstSearch = stops[0] ? getFuelSearchUrl(stops[0]) : getFuelSearchUrl({ search: fuelAdvice.search });
+    window.open(firstSearch, "_blank", "noopener");
+    fuelLookupState = {
+      stageIndex,
+      loading: false,
+      message: "Live prijsbron nog niet gekoppeld. Gebruik voorlopig de zoekpunten hierboven; de app is klaar voor een prijs-proxy met echte prijzen.",
+      stations: [],
+    };
+    renderStages();
+    return;
+  }
+
+  try {
+    const response = await fetch(proxyUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fuelType, stops }),
+    });
+    const data = await response.json();
+    if (!response.ok || data.error) throw new Error(data.error || "Prijsdienst gaf geen bruikbaar antwoord.");
+    const stations = (data.stations || [])
+      .filter((station) => station.price)
+      .sort((a, b) => Number(a.price) - Number(b.price))
+      .slice(0, 6);
+
+    fuelLookupState = {
+      stageIndex,
+      loading: false,
+      message: stations.length ? `Live prijzen voor ${FUEL_TYPES[fuelType]} gevonden.` : "Geen actuele prijzen gevonden voor deze stop.",
+      stations,
+    };
+  } catch (error) {
+    fuelLookupState = {
+      stageIndex,
+      loading: false,
+      message: `Live prijscheck lukte niet: ${error.message}`,
+      stations: [],
+    };
+  }
+  renderStages();
 }
 
 function getGroceryAdvice(stage) {
@@ -2542,9 +2740,7 @@ function renderStages() {
           <p class="eyebrow">Brandstof</p>
           <h3>Tanken</h3>
           <p><b>${fuelAdvice.title}.</b> ${fuelAdvice.body}</p>
-          <div class="inline-actions">
-            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/gas+station+near+${encodeURIComponent(fuelAdvice.search)}">Tankstations</a>
-          </div>
+          ${renderFuelPriceLookup(fuelAdvice)}
         </section>
 
         <section class="day-tool">
