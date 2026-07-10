@@ -38,6 +38,34 @@ textarea {
   background: var(--line);
 }
 
+.app.setup-mode {
+  display: grid;
+  grid-template-columns: minmax(320px, 760px);
+  justify-content: center;
+  align-content: start;
+  gap: 0;
+  padding: 28px;
+  background:
+    linear-gradient(180deg, rgba(35, 68, 58, 0.08), rgba(238, 241, 236, 0) 280px),
+    var(--bg);
+}
+
+.app.setup-mode .setup-panel {
+  min-height: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.app.setup-mode .workspace,
+.app.setup-mode .feedback-panel {
+  display: none;
+}
+
+.app.dashboard-mode .setup-panel {
+  grid-column: 1;
+}
+
 .panel,
 .workspace {
   background: var(--panel);
@@ -283,6 +311,11 @@ input[type="checkbox"] {
   color: #fff;
   font-weight: 850;
   box-shadow: 0 10px 22px rgba(216, 111, 69, 0.22);
+}
+
+.compact-action {
+  flex: 0 0 auto;
+  padding: 0 14px;
 }
 
 .secondary-action {
@@ -703,6 +736,17 @@ input[type="checkbox"] {
 @media (max-width: 900px) {
   .app {
     display: block;
+  }
+
+  .app.setup-mode {
+    display: block;
+    padding: 0;
+  }
+
+  .app.setup-mode .setup-panel {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
 
   .panel,

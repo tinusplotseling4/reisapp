@@ -639,6 +639,26 @@ function refreshEmptyMapView() {
   fitMapToRoute();
 }
 
+function showDashboard() {
+  calculatePlan();
+  $("#appShell").classList.remove("setup-mode");
+  $("#appShell").classList.add("dashboard-mode");
+
+  requestAnimationFrame(() => {
+    if (routeMap) {
+      routeMap.invalidateSize();
+      fitMapToRoute();
+    }
+    $(".workspace").scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function showTripInfo() {
+  $("#appShell").classList.add("setup-mode");
+  $("#appShell").classList.remove("dashboard-mode");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 function getFullTankRange() {
   return Math.round((state.tankSize / state.fuelConsumption) * 100);
 }
@@ -1093,7 +1113,8 @@ function bindEvents() {
     calculatePlan();
   });
 
-  $("#recalculate").addEventListener("click", calculatePlan);
+  $("#openDashboard").addEventListener("click", showDashboard);
+  $("#editTripInfo").addEventListener("click", showTripInfo);
   $("#exportFeedback").addEventListener("click", exportFeedback);
   $("#clearFeedback").addEventListener("click", () => {
     feedbackFields.forEach((id) => {

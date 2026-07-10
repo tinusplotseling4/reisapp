@@ -8,13 +8,13 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main class="app">
-      <aside class="panel setup-panel" aria-label="Reisinstellingen">
+    <main class="app setup-mode" id="appShell">
+      <aside class="panel setup-panel" aria-label="Reisinfokaart">
         <div class="brand">
           <div class="brand-mark">TC</div>
           <div>
-            <p class="eyebrow">Reiscompanion Blanco</p>
-            <h1>Nieuwe reis opzetten zonder voorbeelddata.</h1>
+            <p class="eyebrow">Reisinfokaart</p>
+            <h1>Vul de basis in en bouw daarna je dashboard.</h1>
           </div>
         </div>
 
@@ -160,7 +160,7 @@
           </label>
         </section>
 
-        <button class="primary-action" type="button" id="recalculate">Plan route</button>
+        <button class="primary-action" type="button" id="openDashboard">Naar dashboard en dagkaarten</button>
       </aside>
 
       <section class="workspace">
@@ -170,6 +170,7 @@
             <h2 id="routeTitle">Reiscompanion Blanco</h2>
             <p id="routeSubtitle">Kies een start, bestemming en routepunten.</p>
           </div>
+          <button class="secondary-action compact-action" type="button" id="editTripInfo">Reisinfo aanpassen</button>
           <div class="trip-score" id="tripScoreBox">
             <span id="fitScore">88</span>
             <small id="fitLabel">routefit</small>
