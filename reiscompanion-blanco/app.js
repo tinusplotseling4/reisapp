@@ -656,7 +656,10 @@ function showDashboard() {
 function showTripInfo() {
   $("#appShell").classList.add("setup-mode");
   $("#appShell").classList.remove("dashboard-mode");
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  $(".setup-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  requestAnimationFrame(() => {
+    if (routeMap) routeMap.invalidateSize();
+  });
 }
 
 function getFullTankRange() {

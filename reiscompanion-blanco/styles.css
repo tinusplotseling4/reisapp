@@ -40,17 +40,19 @@ textarea {
 
 .app.setup-mode {
   display: grid;
-  grid-template-columns: minmax(320px, 760px);
+  grid-template-columns: minmax(320px, 620px) minmax(420px, 760px);
   justify-content: center;
+  align-items: start;
   align-content: start;
-  gap: 0;
+  gap: 18px;
   padding: 28px;
   background:
     linear-gradient(180deg, rgba(35, 68, 58, 0.08), rgba(238, 241, 236, 0) 280px),
     var(--bg);
 }
 
-.app.setup-mode .setup-panel {
+.app.setup-mode .setup-panel,
+.app.setup-mode .trip-map-panel {
   min-height: auto;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -62,8 +64,28 @@ textarea {
   display: none;
 }
 
+.app.dashboard-mode {
+  grid-template-columns: minmax(300px, 360px) minmax(520px, 1fr) minmax(300px, 360px);
+}
+
 .app.dashboard-mode .setup-panel {
   grid-column: 1;
+}
+
+.app.dashboard-mode .trip-map-panel {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
+.app.dashboard-mode .workspace {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.app.dashboard-mode .feedback-panel {
+  grid-column: 3;
+  grid-row: 1 / span 2;
 }
 
 .panel,
@@ -375,6 +397,15 @@ input[type="checkbox"] {
 .map-panel {
   padding: 0;
   overflow: hidden;
+}
+
+.trip-map-panel {
+  align-self: start;
+}
+
+.app.setup-mode .trip-map-panel {
+  position: sticky;
+  top: 18px;
 }
 
 .map-frame {
@@ -720,12 +751,23 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 1280px) {
-  .app {
+  .app,
+  .app.dashboard-mode {
     grid-template-columns: 330px minmax(520px, 1fr);
   }
 
   .feedback-panel {
     grid-column: 1 / -1;
+  }
+
+  .app.dashboard-mode .trip-map-panel,
+  .app.dashboard-mode .workspace {
+    grid-column: 2;
+  }
+
+  .app.dashboard-mode .feedback-panel {
+    grid-column: 1 / -1;
+    grid-row: auto;
   }
 
   .cards-row {
@@ -734,7 +776,8 @@ input[type="checkbox"] {
 }
 
 @media (max-width: 900px) {
-  .app {
+  .app,
+  .app.dashboard-mode {
     display: block;
   }
 
@@ -743,10 +786,15 @@ input[type="checkbox"] {
     padding: 0;
   }
 
-  .app.setup-mode .setup-panel {
+  .app.setup-mode .setup-panel,
+  .app.setup-mode .trip-map-panel {
     border: 0;
     border-radius: 0;
     box-shadow: none;
+  }
+
+  .app.setup-mode .trip-map-panel {
+    position: static;
   }
 
   .panel,

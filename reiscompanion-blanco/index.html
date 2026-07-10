@@ -163,6 +163,21 @@
         <button class="primary-action" type="button" id="openDashboard">Naar dashboard en dagkaarten</button>
       </aside>
 
+      <section class="map-panel trip-map-panel" aria-label="Reiskaart">
+        <div class="map-frame" id="mapFrame">
+          <div class="route-map" id="routeMap" aria-label="Europa-kaart met routepunten"></div>
+          <button class="map-clear" type="button" id="clearPoints">Wis punten</button>
+          <div class="map-stat stat-one">
+            <strong id="driveHours">7 u</strong>
+            <span>geschat rijden</span>
+          </div>
+          <div class="map-stat stat-two">
+            <strong id="dayAverage">167 km</strong>
+            <span>per dag</span>
+          </div>
+        </div>
+      </section>
+
       <section class="workspace">
         <header class="hero-panel">
           <div>
@@ -176,21 +191,6 @@
             <small id="fitLabel">routefit</small>
           </div>
         </header>
-
-        <section class="map-panel">
-          <div class="map-frame" id="mapFrame">
-            <div class="route-map" id="routeMap" aria-label="Europa-kaart met routepunten"></div>
-            <button class="map-clear" type="button" id="clearPoints">Wis punten</button>
-            <div class="map-stat stat-one">
-              <strong id="driveHours">7 u</strong>
-              <span>geschat rijden</span>
-            </div>
-            <div class="map-stat stat-two">
-              <strong id="dayAverage">167 km</strong>
-              <span>per dag</span>
-            </div>
-          </div>
-        </section>
 
         <section class="cards-row" id="summaryCards" aria-label="Samenvatting"></section>
 
