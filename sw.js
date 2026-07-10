@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v15-select-contrast";
+const CACHE_NAME = "rondreis-noorwegen-2026-v16-fuel-groceries";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260709-select-contrast",
-  "./app.js?v=20260709-select-contrast",
+  "./style.css?v=20260710-fuel-groceries",
+  "./app.js?v=20260710-fuel-groceries",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260709-select-contrast",
+  "./data/stages.js?v=20260710-fuel-groceries",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

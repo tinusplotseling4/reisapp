@@ -2358,11 +2358,49 @@ function renderDashboard() {
   `;
 }
 
+function getFuelAdvice(stage) {
+  const routeText = `${stage.from} ${stage.to} ${stage.route.join(" ")}`.toLowerCase();
+  const isNorway = /norway|noorwegen|fjord|bergen|trondheim|lofoten|geiranger|alesund|bodo|oslo/.test(routeText);
+  const routeKm = Number(String(stage.km).match(/\d+/)?.[0] || 0);
+  const tankStop = stage.route[1] || stage.from;
+
+  if (isNorway) {
+    return {
+      title: "Houd minimaal halfvol aan",
+      body: `Tank bij vertrek of rond ${tankStop}. In Noorwegen liever niet op reserve rijden; buiten grotere plaatsen zitten tankstations verder uit elkaar.`,
+      search: tankStop,
+    };
+  }
+
+  if (routeKm >= 280) {
+    return {
+      title: "Plan een tankmoment halverwege",
+      body: `Deze etappe is lang genoeg om tanken apart te plannen. Zoek rond ${tankStop} en voorkom dat tanken je eindstop bepaalt.`,
+      search: tankStop,
+    };
+  }
+
+  return {
+    title: "Tanken alleen als het logisch ligt",
+    body: `Deze etappe is korter. Vertrek met voldoende marge en tank alleen rond ${tankStop} als het goed op de route ligt.`,
+    search: tankStop,
+  };
+}
+
+function getGroceryAdvice(stage) {
+  const groceryStop = stage.route[Math.max(0, stage.route.length - 2)] || stage.to;
+  return {
+    title: "Boodschappen voor aankomst",
+    body: `Plan boodschappen rond ${groceryStop}, voordat je richting camping, fjordweg of kleinere plaats rijdt.`,
+    search: groceryStop,
+  };
+}
+
 function renderStages() {
   const stage = STAGES[activeStage];
   const diary = getStageDiary(activeStage);
-  const groceryStop = stage.route[Math.max(0, stage.route.length - 2)] || stage.to;
-  const tankStop = stage.route[1] || stage.from;
+  const fuelAdvice = getFuelAdvice(stage);
+  const groceryAdvice = getGroceryAdvice(stage);
   const routeText = stage.route.join(" -> ");
   const navigationUrl = getGoogleNavigationUrl(stage);
 
@@ -2477,13 +2515,20 @@ function renderStages() {
         </section>
 
         <section class="day-tool">
-          <p class="eyebrow">Praktisch</p>
-          <h3>Tanken en boodschappen</h3>
-          <p><b>Tanken:</b> beste moment is bij vertrek of rond ${tankStop}; in Noorwegen liever boven halfvol blijven.</p>
-          <p><b>Boodschappen:</b> plan dit rond ${groceryStop}, voordat je richting kleinere fjord- of bergwegen gaat.</p>
+          <p class="eyebrow">Brandstof</p>
+          <h3>Tanken</h3>
+          <p><b>${fuelAdvice.title}.</b> ${fuelAdvice.body}</p>
           <div class="inline-actions">
-            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/gas+station+near+${encodeURIComponent(tankStop)}">Tankstations</a>
-            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/supermarket+near+${encodeURIComponent(groceryStop)}">Supermarkten</a>
+            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/gas+station+near+${encodeURIComponent(fuelAdvice.search)}">Tankstations</a>
+          </div>
+        </section>
+
+        <section class="day-tool">
+          <p class="eyebrow">Voorraad</p>
+          <h3>Boodschappen</h3>
+          <p><b>${groceryAdvice.title}.</b> ${groceryAdvice.body}</p>
+          <div class="inline-actions">
+            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/supermarket+near+${encodeURIComponent(groceryAdvice.search)}">Supermarkten</a>
           </div>
         </section>
       </div>
