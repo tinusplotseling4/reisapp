@@ -368,8 +368,28 @@ const feedbackFields = [
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
+let routeMap;
+let routeLine;
+let routeMarkers = [];
+
+const countryCenters = {
+  austria: { center: [47.6, 14.2], zoom: 6, terms: ["oostenrijk", "austria", "wenen", "vienna", "innsbruck", "salzburg"] },
+  belgium: { center: [50.7, 4.7], zoom: 7, terms: ["belgie", "belgium", "brussel", "brussels", "antwerpen"] },
+  croatia: { center: [45.1, 15.2], zoom: 6, terms: ["kroatie", "croatia", "zagreb", "split", "rijeka"] },
+  denmark: { center: [56.1, 10.0], zoom: 6, terms: ["denemarken", "denmark", "kopenhagen", "copenhagen"] },
+  france: { center: [46.7, 2.4], zoom: 5, terms: ["frankrijk", "france", "parijs", "paris", "lyon"] },
+  germany: { center: [51.1, 10.4], zoom: 6, terms: ["duitsland", "germany", "berlijn", "berlin", "hamburg", "munchen", "munich", "koln", "cologne"] },
+  italy: { center: [42.9, 12.6], zoom: 5, terms: ["italie", "italy", "rome", "milaan", "milan", "bolzano", "verona"] },
+  netherlands: { center: [52.2, 5.4], zoom: 7, terms: ["nederland", "netherlands", "holland", "assen", "amsterdam", "utrecht", "rotterdam", "bovensmilde"] },
+  slovenia: { center: [46.1, 14.9], zoom: 7, terms: ["slovenie", "slovenia", "ljubljana", "bled"] },
+  spain: { center: [40.4, -3.7], zoom: 5, terms: ["spanje", "spain", "madrid", "barcelona", "valencia"] },
+  sweden: { center: [62.4, 16.3], zoom: 5, terms: ["zweden", "sweden", "stockholm", "malmo", "goteborg"] }
+};
+
 function coordinateToPoint(lat, lon, name) {
   return {
+    lat,
+    lon,
     x: Math.round(((lon + 180) / 360) * 100),
     y: Math.round(((90 - lat) / 180) * 100),
     name
@@ -377,10 +397,87 @@ function coordinateToPoint(lat, lon, name) {
 }
 
 function pointToCoordinate(point) {
+  if (Number.isFinite(point.lat) && Number.isFinite(point.lon)) {
+    return { lat: point.lat, lon: point.lon };
+  }
+
   return {
     lat: 90 - point.y * 1.8,
     lon: point.x * 3.6 - 180
   };
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 760px)").matches;
+}
+
+function inferStartCountryKey() {
+  const start = ($("#startPlace")?.value || "").trim().toLowerCase();
+
+  if (start) {
+    const match = Object.entries(countryCenters).find(([, data]) => data.terms.some((term) => start.includes(term)));
+    if (match) return match[0];
+  }
+
+  return getRouteCountries()[0];
+}
+
+function getDefaultMapView() {
+  if (isMobileViewport()) {
+    const country = countryCenters[inferStartCountryKey()] || countryCenters.netherlands;
+    return { center: country.center, zoom: country.zoom };
+  }
+
+  return { center: [51.8, 10.2], zoom: 4 };
+}
+
+function initMap() {
+  if (!window.L || routeMap) return;
+
+  const initial = getDefaultMapView();
+  routeMap = L.map("routeMap", {
+    zoomControl: true,
+    scrollWheelZoom: true
+  }).setView(initial.center, initial.zoom);
+
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: "&copy; OpenStreetMap"
+  }).addTo(routeMap);
+
+  routeMap.on("click", (event) => {
+    state.points.push({
+      lat: Number(event.latlng.lat.toFixed(5)),
+      lon: Number(event.latlng.lng.toFixed(5)),
+      name: `Stop ${state.points.length + 1}`
+    });
+    calculatePlan();
+  });
+
+  setTimeout(() => routeMap.invalidateSize(), 0);
+}
+
+function clearMapLayers() {
+  routeMarkers.forEach((marker) => marker.remove());
+  routeMarkers = [];
+
+  if (routeLine) {
+    routeLine.remove();
+    routeLine = null;
+  }
+}
+
+function fitMapToRoute() {
+  if (!routeMap) return;
+
+  if (state.points.length) {
+    const latLngs = state.points.map(pointToCoordinate).map((point) => [point.lat, point.lon]);
+    routeMap.fitBounds(latLngs, { padding: [34, 34], maxZoom: 9 });
+    return;
+  }
+
+  const view = getDefaultMapView();
+  routeMap.setView(view.center, view.zoom);
 }
 
 function haversine(lat1, lon1, lat2, lon2) {
@@ -535,6 +632,11 @@ function calculatePlan() {
   renderFuelPlan(dayDistance);
   renderNotices({ dayDistance, dayDistances, firstDayTooLong, lastDayTooLong, camperBlocked, lodgingMissing });
   renderCountryGrid();
+}
+
+function refreshEmptyMapView() {
+  if (!routeMap || state.points.length) return;
+  fitMapToRoute();
 }
 
 function getFullTankRange() {
@@ -775,20 +877,36 @@ function renderCountryGrid() {
 }
 
 function renderPoints() {
-  const lines = state.points.slice(1).map((point, index) => {
-    const previous = state.points[index];
-    const dx = point.x - previous.x;
-    const dy = point.y - previous.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-    return `<div class="route-line" style="left:${previous.x}%;top:${previous.y}%;width:${length}%;transform:rotate(${angle}deg)"></div>`;
-  }).join("");
+  if (!routeMap) return;
 
-  const points = state.points.map((point, index) => `
-    <div class="route-point" style="left:${point.x}%;top:${point.y}%" title="${point.name}">${index + 1}</div>
-  `).join("");
+  clearMapLayers();
 
-  $("#pointLayer").innerHTML = lines + points;
+  const latLngs = state.points.map((point, index) => {
+    const coords = pointToCoordinate(point);
+    const markerIcon = L.divIcon({
+      className: "",
+      html: `<div class="route-marker">${index + 1}</div>`,
+      iconSize: [30, 30],
+      iconAnchor: [15, 15]
+    });
+
+    const marker = L.marker([coords.lat, coords.lon], { icon: markerIcon })
+      .bindTooltip(point.name || `Stop ${index + 1}`, { direction: "top" })
+      .addTo(routeMap);
+
+    routeMarkers.push(marker);
+    return [coords.lat, coords.lon];
+  });
+
+  if (latLngs.length > 1) {
+    routeLine = L.polyline(latLngs, {
+      color: "#d86f45",
+      weight: 5,
+      opacity: 0.86
+    }).addTo(routeMap);
+  }
+
+  fitMapToRoute();
 }
 
 function parseUploadedRoute(fileName, text) {
@@ -942,6 +1060,8 @@ function bindEvents() {
   });
 
   $("#routeCountries").addEventListener("change", calculatePlan);
+  $("#routeCountries").addEventListener("change", refreshEmptyMapView);
+  $("#startPlace").addEventListener("input", refreshEmptyMapView);
 
   $("#routeUpload").addEventListener("change", async (event) => {
     const file = event.target.files[0];
@@ -968,15 +1088,6 @@ function bindEvents() {
     }
   });
 
-  $("#mapFrame").addEventListener("click", (event) => {
-    if (event.target.id === "clearPoints") return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = Math.round(((event.clientX - rect.left) / rect.width) * 100);
-    const y = Math.round(((event.clientY - rect.top) / rect.height) * 100);
-    state.points.push({ x, y, name: `Stop ${state.points.length + 1}` });
-    calculatePlan();
-  });
-
   $("#clearPoints").addEventListener("click", () => {
     state.points = [];
     calculatePlan();
@@ -998,4 +1109,5 @@ function bindEvents() {
 
 loadFeedback();
 bindEvents();
+initMap();
 calculatePlan();

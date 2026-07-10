@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Reiscompanion Blanco</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
@@ -177,8 +178,7 @@
 
         <section class="map-panel">
           <div class="map-frame" id="mapFrame">
-            <img src="assets/world-map.svg" alt="Gestileerde wereldkaart met routepunten.">
-            <div class="point-layer" id="pointLayer" aria-label="Routepunten"></div>
+            <div class="route-map" id="routeMap" aria-label="Europa-kaart met routepunten"></div>
             <button class="map-clear" type="button" id="clearPoints">Wis punten</button>
             <div class="map-stat stat-one">
               <strong id="driveHours">7 u</strong>
@@ -271,6 +271,7 @@
       </aside>
     </main>
 
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
