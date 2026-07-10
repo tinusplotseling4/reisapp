@@ -1029,9 +1029,20 @@ button:hover,
   border-radius: 0;
   background: var(--soft-bg);
   color: var(--text);
+  color-scheme: dark;
   padding: 10px;
   font: inherit;
   font-weight: 800;
+}
+
+.fuel-control select option {
+  background: #05080d;
+  color: #f3f8ff;
+}
+
+.fuel-control select option:checked {
+  background: #174c82;
+  color: #fff;
 }
 
 .fuel-stop-list,
