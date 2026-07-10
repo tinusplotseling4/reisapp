@@ -1,11 +1,11 @@
 const state = {
   vehicle: "car",
-  country: "netherlands",
   routeMode: "fastest",
   pace: 3,
   totalDistance: 0,
   days: 1,
-  dailyDistance: 250,
+  firstDayMax: 350,
+  lastDayMax: 300,
   tankSize: 60,
   fuelConsumption: 7.5,
   currentFuel: 100,
@@ -404,11 +404,11 @@ function estimateUploadedDistance() {
 }
 
 function readInputs() {
-  state.country = $("#country").value;
   state.pace = Number($("#pace").value);
   state.totalDistance = Math.max(0, Number($("#totalDistance").value));
   state.days = Math.max(1, Number($("#days").value));
-  state.dailyDistance = Math.max(1, Number($("#dailyDistance").value));
+  state.firstDayMax = Math.max(1, Number($("#firstDayMax").value));
+  state.lastDayMax = Math.max(1, Number($("#lastDayMax").value));
   state.tankSize = Math.max(1, Number($("#tankSize").value));
   state.fuelConsumption = Math.max(0.1, Number($("#fuelConsumption").value));
   state.currentFuel = Math.max(0, Math.min(100, Number($("#currentFuel").value)));
@@ -422,6 +422,42 @@ function readInputs() {
 
 function getSelectedRouteCountries() {
   return Array.from($("#routeCountries").selectedOptions).map((option) => option.value);
+}
+
+function getRouteCountries() {
+  const selected = getSelectedRouteCountries();
+  return selected.length ? selected : ["netherlands"];
+}
+
+function getCountryForDay(dayNumber) {
+  const countries = getRouteCountries();
+  const index = Math.min(countries.length - 1, Math.floor(((dayNumber - 1) / Math.max(1, state.days)) * countries.length));
+  return countries[index];
+}
+
+function getRuleForDay(dayNumber) {
+  return countryRules[getCountryForDay(dayNumber)] || countryRules.netherlands;
+}
+
+function buildDayDistances() {
+  if (state.totalDistance <= 0) return [];
+  if (state.days === 1) return [state.totalDistance];
+
+  const balanced = Math.ceil(state.totalDistance / state.days);
+  const first = Math.min(state.totalDistance, state.firstDayMax, balanced);
+  let remaining = state.totalDistance - first;
+
+  if (state.days === 2) return [first, remaining];
+
+  const last = Math.min(remaining, state.lastDayMax, balanced);
+  remaining -= last;
+
+  const middleDays = state.days - 2;
+  const middleBase = Math.floor(remaining / middleDays);
+  const extra = remaining % middleDays;
+  const middle = Array.from({ length: middleDays }, (_, index) => middleBase + (index < extra ? 1 : 0));
+
+  return [first, ...middle, last];
 }
 
 function getLodgingForDay(dayNumber) {
@@ -438,7 +474,7 @@ function getLodgingForDay(dayNumber) {
 
 function resolveSleepType(dayNumber) {
   const preferred = getLodgingForDay(dayNumber);
-  const rule = countryRules[state.country];
+  const rule = getRuleForDay(dayNumber);
 
   if (preferred === "hotel") return "hotel";
   if (preferred === "camping") return "camping";
@@ -466,20 +502,21 @@ function summarizeLodging() {
 function calculatePlan() {
   readInputs();
 
-  const rule = countryRules[state.country];
-  const dayDistance = Math.ceil(state.totalDistance / state.days);
+  const dayDistances = buildDayDistances();
+  const dayDistance = dayDistances.length ? Math.round(state.totalDistance / state.days) : 0;
   const fuelRange = getFullTankRange();
   const currentRange = Math.round(fuelRange * (state.currentFuel / 100));
   const vehicleMultiplier = state.vehicle === "camper" ? 1.18 : state.vehicle === "motorcycle" ? 1.08 : 1;
   const driveHours = state.totalDistance > 0
     ? Math.round((state.totalDistance / 78) * vehicleMultiplier + state.pace * 0.4)
     : 0;
-  const overMax = dayDistance > state.dailyDistance;
+  const firstDayTooLong = dayDistances[0] > state.firstDayMax && state.days > 1;
+  const lastDayTooLong = dayDistances.at(-1) > state.lastDayMax && state.days > 1;
   const camperBlocked = state.vehicle === "camper" && state.mountainPass;
   const lodgingMissing = !state.lodging.hotel.enabled && !state.lodging.camping.enabled && !state.lodging.self.enabled;
   const score = camperBlocked
     ? "AF"
-    : Math.max(42, Math.min(96, 94 - (overMax ? 16 : 0) - (lodgingMissing ? 10 : 0) - (state.pace > 4 ? 4 : 0)));
+    : Math.max(42, Math.min(96, 94 - (firstDayTooLong || lastDayTooLong ? 16 : 0) - (lodgingMissing ? 10 : 0) - (state.pace > 4 ? 4 : 0)));
 
   $("#routeTitle").textContent = $("#tripName").value || "Naamloze reis";
   $("#routeSubtitle").textContent = `${$("#startPlace").value || "Start"} naar ${$("#endPlace").value || "bestemming"} in ${state.days} dagen.`;
@@ -489,14 +526,14 @@ function calculatePlan() {
   $("#tripScoreBox").classList.toggle("blocked-score", camperBlocked);
   $("#driveHours").textContent = `${driveHours} u`;
   $("#dayAverage").textContent = `${dayDistance} km`;
-  $("#sleepRule").textContent = `${rule.label}: ${rule.wildCamping === "allowed" ? "vrij staan mogelijk" : "camping/camperplaats"}`;
+  $("#sleepRule").textContent = "Slaapregels per land op route";
   $("#fuelRange").textContent = `${currentRange} km nu / ${fuelRange} km vol`;
 
   renderPoints();
-  renderSummary(dayDistance, driveHours);
-  renderDays(dayDistance);
+  renderSummary(dayDistance, driveHours, dayDistances);
+  renderDays(dayDistances);
   renderFuelPlan(dayDistance);
-  renderNotices({ dayDistance, overMax, camperBlocked, lodgingMissing, rule });
+  renderNotices({ dayDistance, dayDistances, firstDayTooLong, lastDayTooLong, camperBlocked, lodgingMissing });
   renderCountryGrid();
 }
 
@@ -504,11 +541,13 @@ function getFullTankRange() {
   return Math.round((state.tankSize / state.fuelConsumption) * 100);
 }
 
-function renderSummary(dayDistance, driveHours) {
+function renderSummary(dayDistance, driveHours, dayDistances) {
   const items = [
     ["Vervoer", vehicleLabels[state.vehicle]],
     ["Afstand", `${state.totalDistance} km`],
     ["Gemiddeld", `${dayDistance} km/dag`],
+    ["Dag 1", `${dayDistances[0] || 0} km`],
+    ["Laatste dag", `${dayDistances.at(-1) || 0} km`],
     ["Rijtijd", `${driveHours} uur`],
     ["Route", routeModes[state.routeMode].label],
     ["Actieradius", `${getFullTankRange()} km`],
@@ -524,7 +563,7 @@ function renderSummary(dayDistance, driveHours) {
   `).join("");
 }
 
-function renderDays(dayDistance) {
+function renderDays(dayDistances) {
   if (state.totalDistance <= 0) {
     $("#dayGrid").innerHTML = `
       <article class="day-card-full">
@@ -545,11 +584,13 @@ function renderDays(dayDistance) {
   }
 
   const visibleDays = Math.min(state.days, 10);
+  let startKm = 0;
 
   $("#dayGrid").innerHTML = Array.from({ length: visibleDays }, (_, index) => {
     const day = index + 1;
-    const startKm = Math.round((day - 1) * dayDistance);
-    const endKm = Math.min(state.totalDistance, Math.round(day * dayDistance));
+    const distance = dayDistances[index] || 0;
+    const endKm = Math.min(state.totalDistance, startKm + distance);
+    const rule = getRuleForDay(day);
     const sleepType = resolveSleepType(day);
     const options = getOptionsForSleepType(sleepType);
     const primary = options[0];
@@ -557,18 +598,21 @@ function renderDays(dayDistance) {
     const tankKm = Math.round(startKm + (endKm - startKm) * 0.55);
     const groceriesKm = Math.max(startKm, endKm - 18);
     const fuelStatus = getFuelStatusAtKm(endKm);
+    const dayStartKm = startKm;
+    startKm = endKm;
 
     return `
       <article class="day-card-full">
         <header>
           <span>Dag ${day}</span>
-          <strong>${startKm}-${endKm} km</strong>
+          <strong>${dayStartKm}-${endKm} km</strong>
         </header>
         <div class="day-main">
           <div>
-            <small>Slapen</small>
+            <small>Slapen in ${rule.label}</small>
             <h4>${lodgingLabels[sleepType]}</h4>
             ${primary ? `<p><strong>${primary.name}</strong> ${primary.score} reizigersscore. ${primary.detail}</p>` : "<p>Geen accommodatie gezocht. Route blijft wel gepland.</p>"}
+            <p>${rule.note}</p>
           </div>
           <div class="task-split">
             <div>
@@ -649,13 +693,23 @@ function renderNotices(context) {
     notices.push(["Route valt af", "Camper gekozen en route bevat smalle bergpas of veel haarspeldbochten. Deze route niet voorstellen.", "blocked"]);
   }
 
-  if (context.overMax) {
-    notices.push(["Dagafstand te hoog", `Gemiddeld ${context.dayDistance} km per dag, maar maximum staat op ${state.dailyDistance} km. Voeg dagen toe of verhoog max km/dag.`, "warning"]);
+  if (context.firstDayTooLong) {
+    notices.push(["Eerste dag te lang", `Dag 1 komt uit op ${context.dayDistances[0]} km, maar je maximum staat op ${state.firstDayMax} km. Voeg een dag toe of verhoog dag 1.`, "warning"]);
+  }
+
+  if (context.lastDayTooLong) {
+    notices.push(["Laatste dag te lang", `De laatste dag komt uit op ${context.dayDistances.at(-1)} km, maar je maximum staat op ${state.lastDayMax} km. Voeg een dag toe of verhoog de laatste dag.`, "warning"]);
   }
 
   if (state.vehicle === "camper" && state.lodging.self.enabled) {
-    const type = ["allowed", "allowed_with_limits"].includes(context.rule.wildCamping) ? "" : "warning";
-    notices.push(["Camper en zelf regelen", `${context.rule.label}: ${context.rule.note}`, type]);
+    const strictCountries = getRouteCountries()
+      .map((countryKey) => countryRules[countryKey])
+      .filter((rule) => rule && !["allowed", "allowed_with_limits"].includes(rule.wildCamping));
+    const type = strictCountries.length ? "warning" : "";
+    const text = strictCountries.length
+      ? `Zelf regelen met camper vraagt extra controle in: ${strictCountries.map((rule) => rule.label).join(", ")}.`
+      : "Zelf regelen met camper lijkt mogelijk op basis van de landen op route, maar lokale borden blijven leidend.";
+    notices.push(["Camper en zelf regelen", text, type]);
   }
 
   if (state.vehicle === "camper") {
@@ -686,10 +740,10 @@ function renderNotices(context) {
 }
 
 function renderCountryGrid() {
-  const countries = getSelectedRouteCountries();
+  const countries = getRouteCountries();
 
   $("#countryGrid").innerHTML = countries.map((countryKey) => {
-    const rule = countryRules[countryKey] || countryRules[state.country];
+    const rule = countryRules[countryKey] || countryRules.netherlands;
     const info = countryTravelInfo[countryKey] || {
       required: ["Controleer verplichte uitrusting voor vertrek"],
       useful: ["Lokale regels en milieuzones checken"],
@@ -868,11 +922,11 @@ function bindEvents() {
     "#tripName",
     "#startPlace",
     "#endPlace",
-    "#country",
     "#pace",
     "#totalDistance",
     "#days",
-    "#dailyDistance",
+    "#firstDayMax",
+    "#lastDayMax",
     "#tankSize",
     "#fuelConsumption",
     "#currentFuel",
