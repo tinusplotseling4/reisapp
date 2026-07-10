@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 720" role="img" aria-labelledby="title desc">
+  <title id="title">Wereldkaart</title>
+  <desc id="desc">Gestileerde wereldkaart voor het plaatsen van routepunten.</desc>
+  <defs>
+    <linearGradient id="ocean" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#7fb1c8"/>
+      <stop offset=".52" stop-color="#c8ddd9"/>
+      <stop offset="1" stop-color="#e8eadb"/>
+    </linearGradient>
+    <linearGradient id="land" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0" stop-color="#e7ead4"/>
+      <stop offset="1" stop-color="#9eb38f"/>
+    </linearGradient>
+  </defs>
+  <rect width="980" height="720" fill="url(#ocean)"/>
+  <g fill="url(#land)" stroke="#7b9275" stroke-width="3" opacity=".94">
+    <path d="M111 202c36-54 91-82 165-82 58 0 99 18 124 55 19 28 14 65-14 85-33 23-78-11-106 20-25 27 16 60-8 92-25 33-89 29-126-1-44-35-66-107-35-169z"/>
+    <path d="M256 382c38-20 79-8 94 29 16 41-20 83-2 125 14 32 45 47 39 83-8 47-72 44-96 6-24-39-1-82-21-123-18-37-62-41-69-78-4-22 16-34 55-42z"/>
+    <path d="M458 184c68-38 154-35 214 10 38 29 79 32 125 22 48-11 86 13 95 48 8 33-20 63-65 66-39 2-64-18-99-6-43 15-39 56-82 65-48 10-76-37-124-21-36 12-71 57-108 32-35-24-23-78 6-103 34-30 6-83 38-113z"/>
+    <path d="M536 425c46-26 92-17 124 19 31 35 70 43 117 31 45-11 83 11 91 46 8 38-25 76-75 77-47 1-76-34-116-24-50 13-76 60-126 44-50-16-69-71-48-117 8-18 19-44 33-76z"/>
+    <path d="M746 134c43-31 96-22 123 14 25 34 11 75-31 90-37 13-74-10-103 9-20 13-45 3-50-20-6-28 18-64 61-93z"/>
+    <path d="M787 609c34-23 78-15 98 16 20 30 2 66-38 73-38 6-78-19-88-52-4-14 5-27 28-37z"/>
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-width="2" opacity=".33">
+    <path d="M70 260h850"/>
+    <path d="M70 360h850"/>
+    <path d="M70 460h850"/>
+    <path d="M230 80v560"/>
+    <path d="M490 80v560"/>
+    <path d="M750 80v560"/>
+  </g>
+</svg>

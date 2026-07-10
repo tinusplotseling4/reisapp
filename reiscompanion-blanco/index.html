@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Reiscompanion Blanco</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app">
+      <aside class="panel setup-panel" aria-label="Reisinstellingen">
+        <div class="brand">
+          <div class="brand-mark">TC</div>
+          <div>
+            <p class="eyebrow">Reiscompanion Blanco</p>
+            <h1>Nieuwe reis opzetten zonder voorbeelddata.</h1>
+          </div>
+        </div>
+
+        <section class="control-group">
+          <label for="tripName">Reisnaam</label>
+          <input id="tripName" type="text" value="Reiscompanion Blanco">
+        </section>
+
+        <section class="control-group grid-two">
+          <div>
+            <label for="startPlace">Van</label>
+            <input id="startPlace" type="text" value="">
+          </div>
+          <div>
+            <label for="endPlace">Naar</label>
+            <input id="endPlace" type="text" value="">
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label>Routekeuze</label>
+          <div class="segmented-control route-mode-control" role="radiogroup" aria-label="Routekeuze">
+            <button class="route-mode active" type="button" data-route-mode="fastest" aria-pressed="true">Snelst</button>
+            <button class="route-mode" type="button" data-route-mode="scenic" aria-pressed="false">Mooist</button>
+            <button class="route-mode" type="button" data-route-mode="relaxed" aria-pressed="false">Relaxed</button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label for="routeCountries">Landen op route</label>
+          <select id="routeCountries" multiple size="7">
+            <option value="netherlands">Nederland</option>
+            <option value="belgium">Belgie</option>
+            <option value="germany">Duitsland</option>
+            <option value="denmark">Denemarken</option>
+            <option value="austria">Oostenrijk</option>
+            <option value="italy">Italie</option>
+            <option value="slovenia">Slovenie</option>
+            <option value="croatia">Kroatie</option>
+            <option value="france">Frankrijk</option>
+            <option value="spain">Spanje</option>
+            <option value="sweden">Zweden</option>
+          </select>
+          <p class="field-note">Later vult Google Maps dit automatisch op basis van de gekozen route.</p>
+        </section>
+
+        <section class="control-group grid-two">
+          <div>
+            <label for="totalDistance">Totale afstand</label>
+            <input id="totalDistance" type="number" min="0" max="10000" step="10" value="0">
+          </div>
+          <div>
+            <label for="days">Dagen</label>
+            <input id="days" type="number" min="1" max="60" value="1">
+          </div>
+        </section>
+
+        <section class="control-group grid-two">
+          <div>
+            <label for="dailyDistance">Max km/dag</label>
+            <input id="dailyDistance" type="number" min="80" max="900" step="10" value="250">
+          </div>
+          <div>
+            <label for="country">Land slaapregels</label>
+            <select id="country">
+              <option value="austria">Oostenrijk</option>
+              <option value="belgium">Belgie</option>
+              <option value="bulgaria">Bulgarije</option>
+              <option value="croatia">Kroatie</option>
+              <option value="cyprus">Cyprus</option>
+              <option value="czechia">Tsjechie</option>
+              <option value="denmark">Denemarken</option>
+              <option value="estonia">Estland</option>
+              <option value="finland">Finland</option>
+              <option value="france">Frankrijk</option>
+              <option value="germany">Duitsland</option>
+              <option value="greece">Griekenland</option>
+              <option value="hungary">Hongarije</option>
+              <option value="ireland">Ierland</option>
+              <option value="italy">Italie</option>
+              <option value="latvia">Letland</option>
+              <option value="lithuania">Litouwen</option>
+              <option value="luxembourg">Luxemburg</option>
+              <option value="malta">Malta</option>
+              <option value="netherlands" selected>Nederland</option>
+              <option value="poland">Polen</option>
+              <option value="portugal">Portugal</option>
+              <option value="romania">Roemenie</option>
+              <option value="slovakia">Slowakije</option>
+              <option value="slovenia">Slovenie</option>
+              <option value="spain">Spanje</option>
+              <option value="sweden">Zweden</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label>Vervoer</label>
+          <div class="segmented-control" role="radiogroup" aria-label="Vervoer">
+            <button class="segment active" type="button" data-vehicle="car" aria-pressed="true">Auto</button>
+            <button class="segment" type="button" data-vehicle="camper" aria-pressed="false">Camper</button>
+            <button class="segment" type="button" data-vehicle="motorcycle" aria-pressed="false">Motor</button>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label>Brandstof</label>
+          <div class="fuel-inputs">
+            <div>
+              <label for="tankSize">Tank liter</label>
+              <input id="tankSize" type="number" min="5" max="250" step="1" value="60">
+            </div>
+            <div>
+              <label for="fuelConsumption">Verbruik l/100 km</label>
+              <input id="fuelConsumption" type="number" min="1" max="35" step="0.1" value="7.5">
+            </div>
+            <div>
+              <label for="currentFuel">Nu gevuld %</label>
+              <input id="currentFuel" type="number" min="0" max="100" step="5" value="100">
+            </div>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <div class="label-row">
+            <label for="pace">Reistempo</label>
+            <output id="paceOutput" for="pace">Gebalanceerd</output>
+          </div>
+          <input id="pace" type="range" min="1" max="5" value="3">
+          <div class="range-labels">
+            <span>Meer tijd per plek</span>
+            <span>Maximaal highlights</span>
+          </div>
+        </section>
+
+        <section class="control-group">
+          <label>Overnachting</label>
+          <div class="lodging-options" aria-label="Overnachting">
+            <label class="lodging-option" for="hotelEnabled">
+              <input id="hotelEnabled" type="checkbox" checked>
+              <span>Hotel</span>
+              <small>elke</small>
+              <input id="hotelEvery" type="number" min="1" max="30" value="3">
+              <small>dagen</small>
+            </label>
+            <label class="lodging-option" for="campingEnabled">
+              <input id="campingEnabled" type="checkbox" checked>
+              <span>Camping</span>
+              <small>elke</small>
+              <input id="campingEvery" type="number" min="1" max="30" value="1">
+              <small>dagen</small>
+            </label>
+            <label class="lodging-option lodging-option-simple" for="selfEnabled">
+              <input id="selfEnabled" type="checkbox" checked>
+              <span>Zelf regelen</span>
+              <small>vrije dagen of camper fallback</small>
+            </label>
+          </div>
+        </section>
+
+        <section class="control-group upload-group">
+          <label for="routeUpload">Route uploaden</label>
+          <input id="routeUpload" type="file" accept=".gpx,.kml,.json,.csv,.txt">
+          <p id="uploadStatus" class="field-note">Optioneel: GPX, KML, JSON of CSV met lat/lon.</p>
+        </section>
+
+        <section class="control-group">
+          <label class="checkbox-row" for="mountainPass">
+            <input id="mountainPass" type="checkbox">
+            <span>Route bevat smalle bergpas of veel haarspeldbochten</span>
+          </label>
+        </section>
+
+        <button class="primary-action" type="button" id="recalculate">Plan route</button>
+      </aside>
+
+      <section class="workspace">
+        <header class="hero-panel">
+          <div>
+            <p class="eyebrow">Dashboard</p>
+            <h2 id="routeTitle">Reiscompanion Blanco</h2>
+            <p id="routeSubtitle">Kies een start, bestemming en routepunten.</p>
+          </div>
+          <div class="trip-score" id="tripScoreBox">
+            <span id="fitScore">88</span>
+            <small id="fitLabel">routefit</small>
+          </div>
+        </header>
+
+        <section class="map-panel">
+          <div class="map-frame" id="mapFrame">
+            <img src="assets/world-map.svg" alt="Gestileerde wereldkaart met routepunten.">
+            <div class="point-layer" id="pointLayer" aria-label="Routepunten"></div>
+            <button class="map-clear" type="button" id="clearPoints">Wis punten</button>
+            <div class="map-stat stat-one">
+              <strong id="driveHours">7 u</strong>
+              <span>geschat rijden</span>
+            </div>
+            <div class="map-stat stat-two">
+              <strong id="dayAverage">167 km</strong>
+              <span>per dag</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="cards-row" id="summaryCards" aria-label="Samenvatting"></section>
+
+        <section class="dashboard-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Dagplanning</p>
+              <h3>Kilometers, slapen, tanken en boodschappen</h3>
+            </div>
+            <span id="sleepRule" class="status-pill">Slaapregel</span>
+          </div>
+          <div class="day-grid" id="dayGrid"></div>
+        </section>
+
+        <section class="dashboard-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Brandstofplanning</p>
+              <h3>Actieradius, tankmomenten en landenadvies</h3>
+            </div>
+            <span id="fuelRange" class="status-pill">Actieradius</span>
+          </div>
+          <div class="fuel-grid" id="fuelGrid"></div>
+        </section>
+
+        <section class="dashboard-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Routechecks</p>
+              <h3>Wat moet je weten voor vertrek?</h3>
+            </div>
+          </div>
+          <div class="notices" id="notices"></div>
+        </section>
+
+        <section class="dashboard-section">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Landen op route</p>
+              <h3>Regels, verplichte spullen en fotomomenten</h3>
+            </div>
+          </div>
+          <div class="country-grid" id="countryGrid"></div>
+        </section>
+      </section>
+
+      <aside class="panel feedback-panel" aria-label="Feedback">
+        <div class="panel-title">
+          <p class="eyebrow">Feedback</p>
+          <h2>Opmerkingen noteren</h2>
+        </div>
+
+        <section class="feedback-block">
+          <label for="feedbackSetup">Instellingen</label>
+          <textarea id="feedbackSetup" rows="4" placeholder="Wat mist hier?"></textarea>
+        </section>
+        <section class="feedback-block">
+          <label for="feedbackDashboard">Dashboard</label>
+          <textarea id="feedbackDashboard" rows="4" placeholder="Wat voelt goed of fout?"></textarea>
+        </section>
+        <section class="feedback-block">
+          <label for="feedbackSleep">Slaapadvies</label>
+          <textarea id="feedbackSleep" rows="4" placeholder="Hotels, campings, vrij staan..."></textarea>
+        </section>
+        <section class="feedback-block">
+          <label for="feedbackRules">Camperregels</label>
+          <textarea id="feedbackRules" rows="4" placeholder="Bergpassen, wildkamperen, landen..."></textarea>
+        </section>
+        <section class="feedback-block">
+          <label for="feedbackOther">Overig</label>
+          <textarea id="feedbackOther" rows="4" placeholder="Alles wat opvalt."></textarea>
+        </section>
+
+        <div class="feedback-actions">
+          <button class="primary-action" type="button" id="exportFeedback">Exporteer feedback</button>
+          <button class="secondary-action" type="button" id="clearFeedback">Leeg feedback</button>
+        </div>
+        <p class="field-note">Feedback wordt lokaal in je browser bewaard.</p>
+      </aside>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
