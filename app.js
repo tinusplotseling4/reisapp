@@ -2360,9 +2360,33 @@ function renderDashboard() {
 
 function getFuelAdvice(stage) {
   const routeText = `${stage.from} ${stage.to} ${stage.route.join(" ")}`.toLowerCase();
-  const isNorway = /norway|noorwegen|fjord|bergen|trondheim|lofoten|geiranger|alesund|bodo|oslo/.test(routeText);
   const routeKm = Number(String(stage.km).match(/\d+/)?.[0] || 0);
   const tankStop = stage.route[1] || stage.from;
+  const crossesGermanyDenmarkSweden =
+    /germany|duitsland|hamburg/.test(routeText) &&
+    /denmark|denemarken|kolding|great belt|grote belt|oresund|øresund/.test(routeText) &&
+    /sweden|zweden|malmo|gothenburg|goteborg/.test(routeText);
+  const fromSwedenToDenmarkGermany =
+    /sweden|zweden|malmo|gothenburg|goteborg|karlstad/.test(routeText) &&
+    /denmark|denemarken|great belt|grote belt|oresund|øresund/.test(routeText) &&
+    /germany|duitsland|hamburg/.test(routeText);
+  const isNorway = /norway|noorwegen|fjord|bergen|trondheim|lofoten|geiranger|alesund|bodo|oslo|geilo|haugastol|eidfjord|aurland|olden|loen|andalsnes/.test(routeText);
+
+  if (crossesGermanyDenmarkSweden) {
+    return {
+      title: "Volgooien in Duitsland, Denemarken overslaan",
+      body: "Deze etappe is lang en loopt via Duitsland, Denemarken en Zweden. Tank in Duitsland nog vol, rij Denemarken bij voorkeur door met zo min mogelijk tanken, en vul daarna in Zweden weer bij. Denemarken is vaak duurder; check vlak voor vertrek nog even de actuele prijzen.",
+      search: "Hamburg, Germany",
+    };
+  }
+
+  if (fromSwedenToDenmarkGermany) {
+    return {
+      title: "Eerst Zweden, Denemarken minimaal, daarna Duitsland",
+      body: "Vul in Zweden voldoende bij voor de Deense doortocht. Tank in Denemarken alleen als het moet en plan de volgende volle tank in Duitsland. Zo voorkom je dat de duurste kilometers je tankstrategie bepalen.",
+      search: "Malmo, Sweden",
+    };
+  }
 
   if (isNorway) {
     return {
