@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Reiscompanion Blanco" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Assen naar Bolzano - 3 dagen gebalanceerd</name>
+    <desc>Concept-GPX voor een gebalanceerde 3-daagse route van Assen naar Bolzano. Dag 1 eindigt rond Koblenz, dag 2 rond Ulm, dag 3 in Bolzano.</desc>
+  </metadata>
+
+  <wpt lat="52.9928" lon="6.5642">
+    <name>Start: Assen</name>
+    <desc>Dag 1 vertrekpunt.</desc>
+  </wpt>
+  <wpt lat="50.3569" lon="7.5890">
+    <name>Dag 1 eindzone: Koblenz</name>
+    <desc>Gebalanceerde eerste overnachtingszone.</desc>
+  </wpt>
+  <wpt lat="48.4011" lon="9.9876">
+    <name>Dag 2 eindzone: Ulm</name>
+    <desc>Gebalanceerde tweede overnachtingszone.</desc>
+  </wpt>
+  <wpt lat="46.4983" lon="11.3548">
+    <name>Eindpunt: Bolzano</name>
+    <desc>Dag 3 aankomst.</desc>
+  </wpt>
+
+  <rte>
+    <name>Assen - Bolzano, 3 dagen gebalanceerd</name>
+    <desc>Basisroute via Nederland, Duitsland, Oostenrijk en Italie. Controleer actuele route, tol, vignetten en berg-/weercondities voor vertrek.</desc>
+    <rtept lat="52.9928" lon="6.5642">
+      <name>Assen</name>
+    </rtept>
+    <rtept lat="52.5168" lon="6.0830">
+      <name>Zwolle</name>
+    </rtept>
+    <rtept lat="51.9851" lon="5.8987">
+      <name>Arnhem</name>
+    </rtept>
+    <rtept lat="51.2277" lon="6.7735">
+      <name>Dusseldorf</name>
+    </rtept>
+    <rtept lat="50.9375" lon="6.9603">
+      <name>Koln</name>
+    </rtept>
+    <rtept lat="50.3569" lon="7.5890">
+      <name>Dag 1: Koblenz</name>
+    </rtept>
+    <rtept lat="50.1109" lon="8.6821">
+      <name>Frankfurt am Main</name>
+    </rtept>
+    <rtept lat="49.7913" lon="9.9534">
+      <name>Wurzburg</name>
+    </rtept>
+    <rtept lat="49.4521" lon="11.0767">
+      <name>Nurnberg</name>
+    </rtept>
+    <rtept lat="48.4011" lon="9.9876">
+      <name>Dag 2: Ulm</name>
+    </rtept>
+    <rtept lat="47.5660" lon="10.7000">
+      <name>Fussen / Reutte zone</name>
+    </rtept>
+    <rtept lat="47.2692" lon="11.4041">
+      <name>Innsbruck</name>
+    </rtept>
+    <rtept lat="47.0037" lon="11.5061">
+      <name>Brennerpas</name>
+    </rtept>
+    <rtept lat="46.7150" lon="11.6550">
+      <name>Bressanone</name>
+    </rtept>
+    <rtept lat="46.4983" lon="11.3548">
+      <name>Bolzano</name>
+    </rtept>
+  </rte>
+</gpx>
