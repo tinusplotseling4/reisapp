@@ -1006,7 +1006,8 @@ button:hover,
   align-items: center;
 }
 
-.fuel-control {
+.fuel-control,
+.nearby-control {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -1044,7 +1045,8 @@ button:hover,
   display: block;
 }
 
-.fuel-message {
+.fuel-message,
+.nearby-message {
   color: var(--gold);
   font-weight: 850;
 }

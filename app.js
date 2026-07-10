@@ -66,6 +66,12 @@ let fuelLookupState = {
   stations: [],
   targetLabel: "",
 };
+let groceryLookupState = {
+  stageIndex: null,
+  loading: false,
+  message: "",
+  targetLabel: "",
+};
 let locationTimer;
 let gpsRefreshTimer;
 let diaryDraft = {
@@ -2390,18 +2396,18 @@ function getFuelSearchUrl(stop) {
   return `https://www.google.com/maps/search/${encodeURIComponent(terms)}`;
 }
 
-function getCurrentPositionForFuel() {
+function getCurrentPositionForNearby(label = "huidige locatie") {
   if (!navigator.geolocation || !window.isSecureContext) return Promise.resolve(null);
 
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (position) =>
         resolve({
-          label: "huidige locatie",
-          search: "huidige locatie",
+          label,
+          search: label,
           lat: Number(position.coords.latitude.toFixed(6)),
           lng: Number(position.coords.longitude.toFixed(6)),
-          note: "Gebruikt omdat je nu op tankstations drukte.",
+          note: "Gebruikt omdat je nu op deze knop drukte.",
         }),
       () => resolve(null),
       {
@@ -2411,6 +2417,12 @@ function getCurrentPositionForFuel() {
       }
     );
   });
+}
+
+function getGrocerySearchUrl(stop) {
+  const target = stop.lat && stop.lng ? `${stop.lat},${stop.lng}` : stop.search || stop.label;
+  const terms = ["supermarket", "grocery", "near", target].join(" ");
+  return `https://www.google.com/maps/search/${encodeURIComponent(terms)}`;
 }
 
 function getFuelPriceClass(station, index, stations) {
@@ -2608,7 +2620,7 @@ async function loadCheapFuelStations(stageIndex) {
     mapsWindow.document.write("<p style=\"font-family:system-ui;padding:16px\">Locatie wordt bepaald...</p>");
   }
 
-  const currentStop = await getCurrentPositionForFuel();
+  const currentStop = await getCurrentPositionForNearby("huidige locatie");
   const targetStop = currentStop || plannedStop;
   const targetLabel = currentStop ? "huidige locatie" : `${plannedStop.label || plannedStop.search} (fallback)`;
 
@@ -2672,6 +2684,63 @@ function getGroceryAdvice(stage) {
     body: `Plan boodschappen rond ${groceryStop}, voordat je richting camping, fjordweg of kleinere plaats rijdt.`,
     search: groceryStop,
   };
+}
+
+function renderGroceryLookup(groceryAdvice) {
+  const state = groceryLookupState.stageIndex === activeStage ? groceryLookupState : { loading: false, message: "", targetLabel: "" };
+
+  return `
+    <div class="nearby-control">
+      <button class="linkbtn mapsbtn" onclick="openNearbyGroceryStores(${activeStage})">
+        ${state.loading ? "Locatie laden..." : "Supermarkten in de buurt"}
+      </button>
+      <a class="textlink" target="_blank" href="${getGrocerySearchUrl({ search: groceryAdvice.search })}">
+        Supermarkten bij geplande stop
+      </a>
+    </div>
+    ${state.targetLabel ? `<p class="muted">Zoekgebied: ${state.targetLabel}</p>` : ""}
+    ${state.message ? `<p class="nearby-message">${state.message}</p>` : ""}
+  `;
+}
+
+async function openNearbyGroceryStores(stageIndex) {
+  const stage = STAGES[stageIndex];
+  const groceryAdvice = getGroceryAdvice(stage);
+  const plannedStop = { label: groceryAdvice.search, search: groceryAdvice.search };
+
+  groceryLookupState = {
+    stageIndex,
+    loading: true,
+    message: "Locatie wordt bepaald...",
+    targetLabel: "",
+  };
+  renderStages();
+
+  const mapsWindow = window.open("about:blank", "_blank");
+  if (mapsWindow) {
+    mapsWindow.document.write("<p style=\"font-family:system-ui;padding:16px\">Locatie wordt bepaald...</p>");
+  }
+
+  const currentStop = await getCurrentPositionForNearby("huidige locatie");
+  const targetStop = currentStop || plannedStop;
+  const targetLabel = currentStop ? "huidige locatie" : `${plannedStop.label || plannedStop.search} (fallback)`;
+  const searchUrl = getGrocerySearchUrl(targetStop);
+
+  if (mapsWindow) {
+    mapsWindow.location.href = searchUrl;
+  } else {
+    window.open(searchUrl, "_blank", "noopener");
+  }
+
+  groceryLookupState = {
+    stageIndex,
+    loading: false,
+    message: currentStop
+      ? "Ik heb Google Maps geopend met supermarkten rond je huidige locatie."
+      : "GPS lukte niet, dus ik heb supermarkten rond de geplande boodschappenplek geopend.",
+    targetLabel,
+  };
+  renderStages();
 }
 
 function renderStages() {
@@ -2803,9 +2872,7 @@ function renderStages() {
           <p class="eyebrow">Voorraad</p>
           <h3>Boodschappen</h3>
           <p><b>${groceryAdvice.title}.</b> ${groceryAdvice.body}</p>
-          <div class="inline-actions">
-            <a class="textlink" target="_blank" href="https://www.google.com/maps/search/supermarket+near+${encodeURIComponent(groceryAdvice.search)}">Supermarkten</a>
-          </div>
+          ${renderGroceryLookup(groceryAdvice)}
         </section>
       </div>
     </div>
