@@ -185,6 +185,10 @@ function canInviteRole(role) {
   return Object.prototype.hasOwnProperty.call(INVITE_ROLES, role);
 }
 
+function canAssignRole(role) {
+  return Object.prototype.hasOwnProperty.call(ROLES, role);
+}
+
 function getMembers() {
   if (remoteMembers && remoteMembers.length) {
     return remoteMembers.map((member) => ({
@@ -344,8 +348,32 @@ function updateNewMember(field, value) {
 }
 
 async function updateMemberRole(id, role) {
+  if (!canAssignRole(role)) {
+    authMessage = "Ongeldige rol. Kies Administrator, Reisleider, Reisgenoot of Thuisblijver.";
+    render();
+    return;
+  }
+
   const member = getMembers().find((item) => item.id === id || item.memberId === id);
   if (!member) return;
+
+  if (isCloudMode() && getActualRole() !== "admin") {
+    authMessage = "Alleen een Administrator kan reisrollen wijzigen.";
+    render();
+    return;
+  }
+
+  if (isCloudMode() && !member.memberId) {
+    authMessage = `Rol van ${member.name} kan niet worden bijgewerkt: intern lid-id ontbreekt. Herlaad de pagina en probeer opnieuw.`;
+    render();
+    return;
+  }
+
+  if (isCloudMode() && member.id === authUser?.id && member.role === "admin" && role !== "admin") {
+    authMessage = "Je kunt je eigen Administrator-rol niet via deze pagina verlagen.";
+    render();
+    return;
+  }
 
   if (role === "admin" && member.role !== "admin") {
     if (isCloudMode() && authUser?.email) {
@@ -379,7 +407,7 @@ async function updateMemberRole(id, role) {
       }
     }
 
-    if (getCurrentRole() !== "admin") {
+    if (getActualRole() !== "admin") {
       authMessage = "Administrator maken is geannuleerd.";
       render();
       return;
@@ -387,8 +415,20 @@ async function updateMemberRole(id, role) {
   }
 
   if (isCloudMode()) {
-    const { error } = await supabaseClient.from("trip_members").update({ role }).eq("id", member.memberId);
-    authMessage = error ? error.message : "Rol bijgewerkt.";
+    const { data, error } = await supabaseClient
+      .from("trip_members")
+      .update({ role })
+      .eq("id", member.memberId)
+      .select("id, role")
+      .maybeSingle();
+
+    if (error) {
+      authMessage = `Rol niet bijgewerkt: ${error.message}`;
+    } else if (!data) {
+      authMessage = `Rol niet bijgewerkt: Supabase heeft geen lidrij gewijzigd voor ${member.name}.`;
+    } else {
+      authMessage = `${member.name} is nu ${ROLES[data.role] || data.role}.`;
+    }
     await loadRemoteState();
     render();
     return;
