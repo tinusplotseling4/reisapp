@@ -993,7 +993,7 @@ button:hover,
 .day-tool h3 {
   margin: 0 0 8px;
 }
-.weather-tool {
+.weather-strip {
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding: 16px 0 18px;
@@ -1047,6 +1047,22 @@ button:hover,
 
 .weather-forecast small {
   line-height: 1.35;
+}
+
+.weather-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.weather-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.weather-strip h3 {
+  margin: 0;
 }
 
 .weather-message {

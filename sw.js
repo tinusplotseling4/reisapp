@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v25-live-weather";
+const CACHE_NAME = "rondreis-noorwegen-2026-v28-weather-summary";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260711-live-weather",
-  "./app.js?v=20260711-live-weather",
+  "./style.css?v=20260711-weather-summary",
+  "./app.js?v=20260711-weather-summary",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260711-live-weather",
+  "./data/stages.js?v=20260711-weather-summary",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

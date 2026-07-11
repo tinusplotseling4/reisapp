@@ -263,6 +263,7 @@ function setAdminMemberView(view) {
   adminMemberView = ["all", "joined", "invites"].includes(view) ? view : "all";
   localStorage.setItem("reisapp_admin_member_view", adminMemberView);
   renderAdminPanel();
+  renderWeatherPanel();
 }
 
 function clearLocalTestData() {
@@ -1042,10 +1043,18 @@ function showTab(id) {
     showTab("map");
     return;
   }
+  if (id === "weather" && !canSeeWeatherTab()) {
+    showTab("days");
+    return;
+  }
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
   document.getElementById(id).classList.add("active");
   if (id === "total") initTotalRoute();
   if (id === "map") initDashboardRoute();
+  if (id === "weather") {
+    renderWeatherPanel();
+    loadLiveWeather();
+  }
 }
 
 function canControlRoute() {
@@ -1071,6 +1080,10 @@ function canMarkVisited() {
 function canUpdateGps() {
   const role = getCurrentRole();
   return role === "admin" || role === "leader" || role === "traveler";
+}
+
+function canSeeWeatherTab() {
+  return canUpdateGps();
 }
 
 function stars(n) {
@@ -1243,7 +1256,7 @@ async function updateDiaryEntry(stageIndex, entryId, value) {
       .eq("id", entryId);
     if (error) authMessage = error.message;
     await loadRemoteDiary();
-    renderStages();
+  renderStages();
     renderDashboardOnly();
     return;
   }
@@ -1269,7 +1282,7 @@ function handleDiaryPhotos(input) {
     )
   ).then((photos) => {
     diaryDraft.photos = diaryDraft.photos.concat(photos);
-    renderStages();
+  renderStages();
   });
 }
 
@@ -1334,7 +1347,7 @@ async function saveDiaryDraft() {
 
   if (isCloudMode() && remoteTrip && authUser) {
     authMessage = "Dagboeknotitie wordt opgeslagen...";
-    renderStages();
+  renderStages();
 
     const { data: entry, error } = await supabaseClient
       .from("diary_entries")
@@ -1357,7 +1370,7 @@ async function saveDiaryDraft() {
         transcript,
       });
       resetDiaryDraft(diaryDraft.stageIndex);
-      renderStages();
+  renderStages();
       return;
     }
 
@@ -1371,7 +1384,7 @@ async function saveDiaryDraft() {
 
     await loadRemoteDiary();
     resetDiaryDraft(diaryDraft.stageIndex);
-    renderStages();
+  renderStages();
     renderDashboardOnly();
     return;
   }
@@ -1464,7 +1477,7 @@ function startSpeechRecognition() {
   diaryRecognition.interimResults = true;
   diaryRecognition.onstart = () => {
     diaryDraft.voiceStatus = "Luistert mee. Spreek je dagboeknotitie rustig in.";
-    renderStages();
+  renderStages();
   };
   diaryRecognition.onresult = (event) => {
     let transcript = "";
@@ -1475,7 +1488,7 @@ function startSpeechRecognition() {
     diaryDraft.voiceStatus = diaryDraft.transcript
       ? "Tekst herkend. Je kunt hem hieronder nog aanvullen of corrigeren."
       : "Luistert nog mee.";
-    renderStages();
+  renderStages();
   };
   diaryRecognition.onerror = (event) => {
     const messages = {
@@ -1486,12 +1499,12 @@ function startSpeechRecognition() {
     };
     diaryDraft.voiceStatus =
       messages[event.error] || "Spraakherkenning stopte. De audio-opname wordt nog wel bewaard.";
-    renderStages();
+  renderStages();
   };
   diaryRecognition.onend = () => {
     if (diaryDraft.recording && !diaryDraft.transcript) {
       diaryDraft.voiceStatus = "Opname loopt nog. Als er geen tekst verschijnt, bewaren we de audio alsnog.";
-      renderStages();
+  renderStages();
     }
   };
 
@@ -1508,7 +1521,7 @@ function startSpeechRecognition() {
 async function startDiaryRecording() {
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
     diaryDraft.voiceStatus = "Microfoon is niet beschikbaar in deze browser.";
-    renderStages();
+  renderStages();
     return;
   }
 
@@ -1523,7 +1536,7 @@ async function startDiaryRecording() {
       error && error.name === "NotAllowedError"
         ? "Microfoontoegang is geweigerd. Geef toestemming in je browser of telefooninstellingen."
         : "Microfoon kon niet starten. Probeer de pagina opnieuw te openen.";
-    renderStages();
+  renderStages();
     return;
   }
 
@@ -1544,7 +1557,7 @@ async function startDiaryRecording() {
     diaryDraft.voiceStatus = diaryDraft.transcript
       ? "Opname bewaard. Controleer de tekst en tik op Toevoegen."
       : "Opname bewaard. Live tekst lukte niet; je kunt zelf tekst typen en de audio blijft bewaard.";
-    renderStages();
+  renderStages();
   };
 
   startSpeechRecognition();
@@ -1559,7 +1572,7 @@ function stopDiaryRecording() {
   }
   if (diaryRecorder && diaryRecorder.state !== "inactive") {
     diaryDraft.voiceStatus = "Opname wordt opgeslagen.";
-    renderStages();
+  renderStages();
     diaryRecorder.stop();
   }
 }
@@ -1741,8 +1754,12 @@ function renderNavigationForRole() {
   navButtons.forEach((button) => {
     button.style.display = isCloudMode() && !authUser ? "none" : "inline-flex";
   });
+  const weatherButton = document.getElementById("weatherNavButton");
   if (adminButton) {
     adminButton.style.display = getActualRole() === "admin" && (!isCloudMode() || authUser) ? "inline-flex" : "none";
+  }
+  if (weatherButton) {
+    weatherButton.style.display = canSeeWeatherTab() && (!isCloudMode() || authUser) ? "inline-flex" : "none";
   }
   if (themeSlot) {
     themeSlot.innerHTML = `
@@ -2757,6 +2774,7 @@ async function loadLiveWeather(force = false) {
     requested: true,
     message: "Weer wordt opgehaald...",
   };
+  renderDaysWeatherSummary();
   renderStages();
 
   try {
@@ -2782,6 +2800,8 @@ async function loadLiveWeather(force = false) {
       position,
       updatedAt: new Date().toISOString(),
     };
+    renderWeatherPanel();
+    renderDaysWeatherSummary();
   } catch (error) {
     weatherState = {
       ...weatherState,
@@ -2789,15 +2809,65 @@ async function loadLiveWeather(force = false) {
       requested: true,
       message: error.message || "Weerbericht is nu niet beschikbaar.",
     };
+    renderWeatherPanel();
+    renderDaysWeatherSummary();
   }
-
   renderStages();
 }
 
 function renderLiveWeather() {
+
   if (!weatherState.requested && !weatherState.loading) {
     weatherState.requested = true;
     setTimeout(() => loadLiveWeather(), 0);
+  }
+
+  const current = weatherState.data?.current;
+  const updated = weatherState.updatedAt
+    ? new Date(weatherState.updatedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })
+    : "-";
+  const where = weatherState.position?.label || "locatie nog bepalen";
+  const weatherButton = canSeeWeatherTab()
+    ? `<button class="linkbtn" onclick="showTab('weather')">Uitgebreid weer</button>`
+    : "";
+
+  if (!current) {
+    return `
+      <section class="weather-strip">
+        <div>
+          <p class="eyebrow">Live weer</p>
+          <h3>${weatherState.message}</h3>
+        </div>
+        ${weatherButton}
+      </section>
+    `;
+  }
+
+  return `
+    <section class="weather-strip">
+      <div>
+        <p class="eyebrow">Live weer</p>
+        <h3>${formatWeatherValue(current.temperature_2m, " graden")} bij ${where}</h3>
+        <p class="muted">${getWeatherLabel(current.weather_code)}. Bijgewerkt ${updated}.</p>
+      </div>
+      ${weatherButton}
+    </section>
+  `;
+}
+
+function renderDaysWeatherSummary() {
+  const summary = document.getElementById("daysWeatherSummary");
+  if (!summary) return;
+  summary.innerHTML = renderLiveWeather();
+}
+
+function renderWeatherPanel() {
+  const panel = document.getElementById("weatherPanel");
+  if (!panel) return;
+
+  if (!canSeeWeatherTab()) {
+    panel.innerHTML = "";
+    return;
   }
 
   const current = weatherState.data?.current;
@@ -2807,26 +2877,28 @@ function renderLiveWeather() {
     : "-";
 
   if (!current) {
-    return `
-      <section class="day-tool weather-tool">
+    panel.innerHTML = `
+      <div class="card weather-panel">
         <div class="weather-head">
           <div>
-            <p class="eyebrow">Live weer</p>
-            <h3>Locatie weerbericht</h3>
+            <p class="eyebrow">Uitgebreid weer</p>
+            <h2>Weerbericht</h2>
           </div>
           <button class="linkbtn" onclick="loadLiveWeather(true)">Ververs</button>
         </div>
         <p class="weather-message">${weatherState.message}</p>
-      </section>
+      </div>
     `;
+    return;
   }
 
-  return `
-    <section class="day-tool weather-tool">
+  panel.innerHTML = `
+    <div class="card weather-panel">
       <div class="weather-head">
         <div>
-          <p class="eyebrow">Live weer</p>
-          <h3>${getWeatherLabel(current.weather_code)}</h3>
+          <p class="eyebrow">Uitgebreid weer</p>
+          <h2>${getWeatherLabel(current.weather_code)}</h2>
+          <p class="muted">Gebaseerd op ${weatherState.position?.label || "locatie"}. Laatst bijgewerkt ${updated}.</p>
         </div>
         <button class="linkbtn" onclick="loadLiveWeather(true)">Ververs</button>
       </div>
@@ -2836,7 +2908,6 @@ function renderLiveWeather() {
         <span>Wind ${formatWeatherValue(current.wind_speed_10m, " km/u")}</span>
         <span>Regen nu ${formatWeatherValue(current.precipitation, " mm")}</span>
       </div>
-      <p class="muted">Gebaseerd op ${weatherState.position?.label || "locatie"}. Laatst bijgewerkt ${updated}.</p>
       ${
         rows.length
           ? `<div class="weather-forecast">
@@ -2854,7 +2925,7 @@ function renderLiveWeather() {
             </div>`
           : ""
       }
-    </section>
+    </div>
   `;
 }
 
@@ -2955,7 +3026,7 @@ async function loadCheapFuelStations(stageIndex) {
       stations: [],
       targetLabel,
     };
-    renderStages();
+  renderStages();
     return;
   }
 
@@ -3137,8 +3208,6 @@ function renderStages() {
           }
         </section>
 
-        ${renderLiveWeather()}
-
         <section class="day-tool">
           <p class="eyebrow">Pins en stops</p>
           <h3>Hoogtepunten</h3>
@@ -3314,15 +3383,19 @@ function render() {
     document.getElementById("stageList").innerHTML = "";
     document.getElementById("lotteList").innerHTML = "";
     document.getElementById("adminPanel").innerHTML = "";
+    document.getElementById("weatherPanel").innerHTML = "";
+    document.getElementById("daysWeatherSummary").innerHTML = "";
     return;
   }
 
   resetDashboardRoute();
   document.getElementById("summary").innerHTML = renderDashboard();
   setTimeout(initDashboardRoute, 0);
+  renderDaysWeatherSummary();
   renderStages();
   renderLotte();
   renderAdminPanel();
+  renderWeatherPanel();
 }
 
 window.addEventListener("beforeinstallprompt", (event) => {
