@@ -1997,10 +1997,24 @@ function getDashboardBounds() {
 }
 
 function addSatelliteLayer(map) {
-  return L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+  const imagery = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
     attribution: "Tiles &copy; Esri",
     maxZoom: 19,
   }).addTo(map);
+
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Roads &copy; Esri",
+    maxZoom: 19,
+    pane: "overlayPane",
+  }).addTo(map);
+
+  L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+    attribution: "Labels &copy; Esri",
+    maxZoom: 19,
+    pane: "overlayPane",
+  }).addTo(map);
+
+  return imagery;
 }
 
 function setDashboardFollowLive(shouldFollow) {
