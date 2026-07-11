@@ -993,6 +993,66 @@ button:hover,
 .day-tool h3 {
   margin: 0 0 8px;
 }
+.weather-tool {
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 16px 0 18px;
+}
+
+.weather-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.weather-current {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 14px 0 10px;
+}
+
+.weather-current strong,
+.weather-current span,
+.weather-forecast div {
+  background: var(--soft-bg);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 12px;
+}
+
+.weather-current strong {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.weather-current span,
+.weather-forecast span,
+.weather-forecast small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.weather-forecast {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.weather-forecast div {
+  display: grid;
+  gap: 4px;
+}
+
+.weather-forecast small {
+  line-height: 1.35;
+}
+
+.weather-message {
+  color: var(--gold);
+  font-weight: 850;
+}
 
 .day-tool p {
   margin: 8px 0;
@@ -1361,6 +1421,11 @@ input[type="checkbox"] {
   .detail-grid {
     grid-template-columns: 1fr 1fr;
   }
+
+  .weather-current,
+  .weather-forecast {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
@@ -1418,6 +1483,11 @@ input[type="checkbox"] {
   }
 
   .day-tools {
+    grid-template-columns: 1fr;
+  }
+
+  .weather-current,
+  .weather-forecast {
     grid-template-columns: 1fr;
   }
 

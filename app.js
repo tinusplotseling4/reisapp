@@ -73,6 +73,14 @@ let groceryLookupState = {
   message: "",
   targetLabel: "",
 };
+let weatherState = {
+  loading: false,
+  requested: false,
+  message: "Weer wordt geladen zodra er een locatie bekend is.",
+  data: null,
+  position: null,
+  updatedAt: "",
+};
 let locationTimer;
 let gpsRefreshTimer;
 let diaryDraft = {
@@ -885,6 +893,7 @@ async function refreshSharedGpsTrack() {
   if (!track.length) return;
   const last = track[track.length - 1];
   drawLivePosition(last, track);
+  loadLiveWeather(true);
 }
 
 function startSharedGpsRefresh() {
@@ -2165,6 +2174,7 @@ async function saveTrackPoint(point) {
 
   if (error) return { shared: false, error };
   remoteGpsPoints = [...remoteGpsPoints, data].slice(-1200);
+  loadLiveWeather(true);
   return { shared: true };
 }
 
@@ -2617,6 +2627,237 @@ function getFuelAdvice(stage) {
   };
 }
 
+const WEATHER_CODE_LABELS = {
+  0: "Helder",
+  1: "Licht bewolkt",
+  2: "Half bewolkt",
+  3: "Bewolkt",
+  45: "Mist",
+  48: "Rijpmist",
+  51: "Lichte motregen",
+  53: "Motregen",
+  55: "Stevige motregen",
+  56: "IJzelmotregen",
+  57: "Stevige ijzelmotregen",
+  61: "Lichte regen",
+  63: "Regen",
+  65: "Stevige regen",
+  66: "IJzel",
+  67: "Stevige ijzel",
+  71: "Lichte sneeuw",
+  73: "Sneeuw",
+  75: "Stevige sneeuw",
+  77: "Sneeuwkorrels",
+  80: "Lichte buien",
+  81: "Buien",
+  82: "Zware buien",
+  85: "Lichte sneeuwbuien",
+  86: "Sneeuwbuien",
+  95: "Onweer",
+  96: "Onweer met hagel",
+  99: "Zwaar onweer met hagel",
+};
+
+function getWeatherLabel(code) {
+  return WEATHER_CODE_LABELS[code] || "Onbekend weerbeeld";
+}
+
+function formatWeatherValue(value, suffix) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "-";
+  return `${Math.round(Number(value))}${suffix}`;
+}
+
+function getLatestSharedWeatherPosition() {
+  if (!remoteGpsPoints.length) return null;
+
+  const latest = remoteGpsPoints.reduce((best, point) => {
+    if (!best) return point;
+    return new Date(point.recorded_at).getTime() > new Date(best.recorded_at).getTime() ? point : best;
+  }, null);
+
+  const lat = Number(latest?.lat);
+  const lon = Number(latest?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  return {
+    lat,
+    lon,
+    label: "laatst gedeelde GPS-locatie",
+  };
+}
+
+function getStageWeatherFallbackPosition() {
+  const points = ROUTE_STAGES[activeStage] || [];
+  const last = points[points.length - 1];
+  if (!last) return null;
+
+  return {
+    lat: last[0],
+    lon: last[1],
+    label: `eindpunt ${STAGES[activeStage].to}`,
+  };
+}
+
+function getBrowserWeatherPosition() {
+  if (!navigator.geolocation || !window.isSecureContext) return Promise.resolve(null);
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          lat: Number(position.coords.latitude.toFixed(6)),
+          lon: Number(position.coords.longitude.toFixed(6)),
+          label: "huidige browserlocatie",
+        }),
+      () => resolve(null),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 300000,
+        timeout: 10000,
+      }
+    );
+  });
+}
+
+async function resolveWeatherPosition() {
+  return getLatestSharedWeatherPosition() || (await getBrowserWeatherPosition()) || getStageWeatherFallbackPosition();
+}
+
+function getWeatherForecastRows() {
+  const hourly = weatherState.data?.hourly;
+  if (!hourly?.time?.length) return [];
+
+  const now = Date.now();
+  return hourly.time
+    .map((time, index) => ({
+      time,
+      index,
+      timestamp: new Date(time).getTime(),
+    }))
+    .filter((item) => item.timestamp >= now - 60 * 60 * 1000)
+    .slice(0, 4)
+    .map(({ time, index }) => ({
+      time: new Date(time).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" }),
+      temp: formatWeatherValue(hourly.temperature_2m?.[index], " graden"),
+      rain: hourly.precipitation_probability?.[index] ?? "-",
+      wind: formatWeatherValue(hourly.wind_speed_10m?.[index], " km/u"),
+      label: getWeatherLabel(hourly.weather_code?.[index]),
+    }));
+}
+
+async function loadLiveWeather(force = false) {
+  if (weatherState.loading) return;
+
+  const updatedAt = weatherState.updatedAt ? new Date(weatherState.updatedAt).getTime() : 0;
+  if (!force && updatedAt && Date.now() - updatedAt < 10 * 60 * 1000) return;
+
+  weatherState = {
+    ...weatherState,
+    loading: true,
+    requested: true,
+    message: "Weer wordt opgehaald...",
+  };
+  renderStages();
+
+  try {
+    const position = await resolveWeatherPosition();
+    if (!position) throw new Error("Geen locatie beschikbaar voor weerbericht.");
+
+    const params = new URLSearchParams({
+      latitude: String(position.lat),
+      longitude: String(position.lon),
+      current: "temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m",
+      hourly: "temperature_2m,precipitation_probability,weather_code,wind_speed_10m",
+      forecast_days: "1",
+      timezone: "auto",
+    });
+    const response = await fetch(`https://api.open-meteo.com/v1/forecast?${params.toString()}`);
+    if (!response.ok) throw new Error("Weerbericht ophalen mislukt.");
+
+    weatherState = {
+      loading: false,
+      requested: true,
+      message: "",
+      data: await response.json(),
+      position,
+      updatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    weatherState = {
+      ...weatherState,
+      loading: false,
+      requested: true,
+      message: error.message || "Weerbericht is nu niet beschikbaar.",
+    };
+  }
+
+  renderStages();
+}
+
+function renderLiveWeather() {
+  if (!weatherState.requested && !weatherState.loading) {
+    weatherState.requested = true;
+    setTimeout(() => loadLiveWeather(), 0);
+  }
+
+  const current = weatherState.data?.current;
+  const rows = getWeatherForecastRows();
+  const updated = weatherState.updatedAt
+    ? new Date(weatherState.updatedAt).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })
+    : "-";
+
+  if (!current) {
+    return `
+      <section class="day-tool weather-tool">
+        <div class="weather-head">
+          <div>
+            <p class="eyebrow">Live weer</p>
+            <h3>Locatie weerbericht</h3>
+          </div>
+          <button class="linkbtn" onclick="loadLiveWeather(true)">Ververs</button>
+        </div>
+        <p class="weather-message">${weatherState.message}</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="day-tool weather-tool">
+      <div class="weather-head">
+        <div>
+          <p class="eyebrow">Live weer</p>
+          <h3>${getWeatherLabel(current.weather_code)}</h3>
+        </div>
+        <button class="linkbtn" onclick="loadLiveWeather(true)">Ververs</button>
+      </div>
+      <div class="weather-current">
+        <strong>${formatWeatherValue(current.temperature_2m, " graden")}</strong>
+        <span>Voelt als ${formatWeatherValue(current.apparent_temperature, " graden")}</span>
+        <span>Wind ${formatWeatherValue(current.wind_speed_10m, " km/u")}</span>
+        <span>Regen nu ${formatWeatherValue(current.precipitation, " mm")}</span>
+      </div>
+      <p class="muted">Gebaseerd op ${weatherState.position?.label || "locatie"}. Laatst bijgewerkt ${updated}.</p>
+      ${
+        rows.length
+          ? `<div class="weather-forecast">
+              ${rows
+                .map(
+                  (row) => `
+                    <div>
+                      <b>${row.time}</b>
+                      <span>${row.label}</span>
+                      <small>${row.temp} / regen ${row.rain}% / wind ${row.wind}</small>
+                    </div>
+                  `
+                )
+                .join("")}
+            </div>`
+          : ""
+      }
+    </section>
+  `;
+}
+
 function renderFuelPriceLookup(fuelAdvice) {
   const stops = fuelAdvice.priceStops || [{ label: fuelAdvice.search, search: fuelAdvice.search }];
   const state = fuelLookupState.stageIndex === activeStage ? fuelLookupState : { loading: false, message: "", stations: [], targetLabel: "" };
@@ -2896,8 +3137,10 @@ function renderStages() {
           }
         </section>
 
+        ${renderLiveWeather()}
+
         <section class="day-tool">
-          <p class="eyebrow">Onderweg</p>
+          <p class="eyebrow">Pins en stops</p>
           <h3>Hoogtepunten</h3>
           ${stage.pois
             .map((poi, poiIndex) => {
