@@ -12,7 +12,7 @@
 <link rel="icon" href="assets/images/icons/app-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20260711-weather-summary">
+<link rel="stylesheet" href="style.css?v=20260711-total-highlights">
 </head>
 <body>
 <main class="app-shell">
@@ -62,6 +62,7 @@
       <span><b class="legend-line planned"></b> Gepland</span>
       <span class="muted">Gedeelde GPS-punten worden elke 5 minuten bijgewerkt zolang de app open is.</span>
     </div>
+    <section id="totalRouteHighlights" class="total-route-highlights"></section>
   </section>
 
   <section id="weather" class="tab">
@@ -87,11 +88,11 @@
   </section>
 </main>
 
-<script src="data/stages.js?v=20260711-weather-summary"></script>
+<script src="data/stages.js?v=20260711-total-highlights"></script>
 <script src="data/app-config.public.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20260711-weather-summary"></script>
+<script src="app.js?v=20260711-total-highlights"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -102,7 +103,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260711-weather-summary").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260711-total-highlights").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

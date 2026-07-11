@@ -894,6 +894,7 @@ async function refreshSharedGpsTrack() {
   if (!track.length) return;
   const last = track[track.length - 1];
   drawLivePosition(last, track);
+  renderTotalRouteHighlights();
   loadLiveWeather(true);
 }
 
@@ -1049,7 +1050,10 @@ function showTab(id) {
   }
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
   document.getElementById(id).classList.add("active");
-  if (id === "total") initTotalRoute();
+  if (id === "total") {
+    initTotalRoute();
+    renderTotalRouteHighlights();
+  }
   if (id === "map") initDashboardRoute();
   if (id === "weather") {
     renderWeatherPanel();
@@ -1871,6 +1875,58 @@ function getTotalMapUrl() {
   return "https://www.google.com/maps/dir/" + totalPoints.map(encodeURIComponent).join("/");
 }
 
+
+const TOTAL_ROUTE_HIGHLIGHTS = [
+  { stage: 0, point: 1, name: "Drents-Friese Wold", type: "Natuur", score: 3, note: "Rustige bos- en heidepauze rond Bovensmilde/Appelscha voordat de lange rit echt begint.", search: "Nationaal Park Drents-Friese Wold" },
+  { stage: 0, point: 2, name: "Hamburg Speicherstadt", type: "Stad", score: 3, note: "UNESCO-pakhuizen en havengevoel; alleen doen als Hamburg toch pauze wordt.", search: "Speicherstadt Hamburg" },
+  { stage: 0, point: 3, name: "Jelling monumenten", type: "UNESCO", score: 4, note: "Vikingstenen en grafheuvels; een van de bekendste historische stops van Denemarken.", search: "Jelling Monuments Denmark" },
+  { stage: 0, point: 4, name: "Nyborg bij de Grote Belt", type: "Uitzicht", score: 3, note: "Goede plek om de Grote Beltbrug niet alleen vanuit de auto te zien.", search: "Nyborg Great Belt Bridge viewpoint" },
+  { stage: 0, point: 5, name: "Dragør oude haven", type: "Kustplaats", score: 3, note: "Historisch havenstadje bij Kopenhagen, handig vlak voor of na de Oresundbrug.", search: "Dragor old town Denmark" },
+  { stage: 0, point: 6, name: "Lund kathedraal", type: "Cultuur", score: 3, note: "Historische stad vlak bij Malmö; betere stop dan eindeloos tankstationhangen.", search: "Lund Cathedral Sweden" },
+  { stage: 1, point: 1, name: "Göteborg archipel", type: "Kust", score: 3, note: "Mooie kustsfeer bij Göteborg; vooral interessant als jullie daar tijd over hebben.", search: "Gothenburg archipelago viewpoint" },
+  { stage: 1, point: 1, name: "Bohus vesting", type: "Historie", score: 3, note: "Kasteelruïne noord van Göteborg, logisch langs de route richting Noorwegen.", search: "Bohus Fortress Sweden" },
+  { stage: 1, point: 2, name: "Oslo Operahuis", type: "Stad", score: 3, note: "Korte stadsstop met uitzicht vanaf het dak, mits Oslo niet te druk voelt.", search: "Oslo Opera House" },
+  { stage: 1, point: 2, name: "Holmenkollen", type: "Uitzicht", score: 3, note: "Bekende skispringschans en uitzicht over Oslo; kleine omweg, groot herkenningspunt.", search: "Holmenkollen Oslo" },
+  { stage: 1, point: 3, name: "Spiralen Drammen", type: "Uitzicht", score: 3, note: "Tunnelspiraal naar uitzichtpunt boven Drammen; past goed als korte pauze.", search: "Spiralen Drammen viewpoint" },
+  { stage: 1, point: 4, name: "Torpo staafkerk", type: "Cultuur", score: 3, note: "Oudere staafkerk langs Hallingdal, minder druk dan de grote namen.", search: "Torpo Stave Church Norway" },
+  { stage: 2, point: 2, name: "Sysendammen", type: "Route", score: 3, note: "Stuwdam op Hardangervidda, goed als extra hoogvlakte-stop.", search: "Sysendammen Hardangervidda" },
+  { stage: 2, point: 3, name: "Vøringsfossen Fossli", type: "Waterval", score: 5, note: "Extra uitzichtpunt bij Vøringsfossen; deze wil je meestal niet missen.", search: "Voringfossen Fossli viewpoint" },
+  { stage: 2, point: 4, name: "Kjeåsen bergboerderij", type: "Uitzicht", score: 4, note: "Spectaculair boven Eidfjord, maar check weg/tunnelregeling en voertuiggeschiktheid.", search: "Kjeåsen mountain farm Eidfjord" },
+  { stage: 3, point: 1, name: "Hardangerfjord uitzichtpunten", type: "Fjord", score: 4, note: "Meerdere korte stops rond de Hardangerbrug en fjordarmen.", search: "Hardangerfjord viewpoint near Hardanger Bridge" },
+  { stage: 3, point: 2, name: "Steinsdalsfossen", type: "Waterval", score: 4, note: "Bekende waterval waar je achterlangs kunt lopen; mooie Hardanger-omweg.", search: "Steinsdalsfossen Norway" },
+  { stage: 3, point: 3, name: "Tvindefossen", type: "Waterval", score: 4, note: "Makkelijk bereikbare waterval bij Voss, sterk als korte stop.", search: "Tvindefossen Voss Norway" },
+  { stage: 3, point: 4, name: "Gudvangen", type: "Fjorddorp", score: 4, note: "Dorp aan de Nærøyfjord; toeristisch, maar landschappelijk erg sterk.", search: "Gudvangen Norway" },
+  { stage: 3, point: 4, name: "Nærøyfjord", type: "UNESCO fjord", score: 5, note: "Een van de beroemdste fjorden van Noorwegen; vooral interessant per boot of uitzichtpunt.", search: "Nærøyfjord Norway" },
+  { stage: 3, point: 4, name: "Flåmsbana", type: "Trein", score: 4, note: "Bekende bergspoorlijn vanuit Flåm; alleen doen als jullie bewust tijd reserveren.", search: "Flåmsbana Flåm Railway" },
+  { stage: 4, point: 1, name: "Aurlandsfjellet snow road", type: "Scenic route", score: 5, note: "Officiële scenic route boven de Laerdaltunnel; check opening en weer.", search: "Aurlandsfjellet scenic route Norway" },
+  { stage: 4, point: 2, name: "Vindhellavegen", type: "Wandeling", score: 4, note: "Historische weg/wandeling bij Borgund, mooi te combineren met de staafkerk.", search: "Vindhellavegen Borgund" },
+  { stage: 4, point: 3, name: "Bøyabreen gletsjer", type: "Gletsjer", score: 4, note: "Toegankelijke gletsjerarm onderweg richting Olden/Loen.", search: "Bøyabreen glacier Norway" },
+  { stage: 4, point: 4, name: "Briksdalsbreen", type: "Gletsjer", score: 5, note: "Een van de bekendste gletsjerstops bij Olden; kost wel tijd.", search: "Briksdalsbreen Olden" },
+  { stage: 4, point: 5, name: "Loen Skylift", type: "Uitzicht", score: 5, note: "Groot uitzicht boven Loen; alleen bij redelijk zicht echt de moeite waard.", search: "Loen Skylift Norway" },
+  { stage: 4, point: 5, name: "Lovatnet", type: "Meer", score: 5, note: "Fotogeniek meer bij Loen, sterk voor rustige avond of ochtend.", search: "Lovatnet Loen Norway" },
+  { stage: 5, point: 2, name: "Gamle Strynefjellsvegen", type: "Scenic route", score: 5, note: "Historische bergweg; check seizoen/opening en voertuigkeuze.", search: "Gamle Strynefjellsvegen Norway" },
+  { stage: 5, point: 3, name: "Djupvatnet", type: "Bergmeer", score: 4, note: "Bergmeer richting Dalsnibba, vaak ruig en fotogeniek.", search: "Djupvatnet Norway" },
+  { stage: 5, point: 5, name: "Seven Sisters waterval", type: "Waterval", score: 5, note: "Klassieker in de Geirangerfjord; meestal vanaf boot of fjordzicht goed te zien.", search: "Seven Sisters Waterfall Geiranger" },
+  { stage: 5, point: 5, name: "Geiranger-Hellesylt ferry", type: "Fjordtocht", score: 5, note: "Autoferry die tegelijk sightseeing is; sterk als route en beleving samenvallen.", search: "Geiranger Hellesylt ferry" },
+  { stage: 6, point: 2, name: "Gudbrandsjuvet", type: "Kloof", score: 4, note: "Korte stop met goed platform boven wild water.", search: "Gudbrandsjuvet viewpoint" },
+  { stage: 6, point: 3, name: "Trollstigen visitor centre", type: "Uitzicht", score: 5, note: "Hoofdplek voor zicht op de haarspeldbochten, mits de weg open is.", search: "Trollstigen visitor centre" },
+  { stage: 6, point: 4, name: "Rampestreken", type: "Wandeling", score: 4, note: "Uitzichtpunt boven Åndalsnes; stevige wandeling, dus alleen met tijd/energie.", search: "Rampestreken Åndalsnes" },
+  { stage: 6, point: 4, name: "Romsdalseggen", type: "Wandeling", score: 5, note: "Topwandeling bij goed weer, maar geen snelle stop.", search: "Romsdalseggen hike" },
+  { stage: 7, point: 1, name: "Varden Molde panorama", type: "Uitzicht", score: 4, note: "Uitzicht over Molde en de bergketen; korte omweg als het helder is.", search: "Varden Molde panorama" },
+  { stage: 7, point: 2, name: "Ergan Coastal Fort Bud", type: "Historie", score: 3, note: "Kustfort/museum bij Bud, passend bij de Atlantische kustroute.", search: "Ergan Coastal Fort Bud Norway" },
+  { stage: 7, point: 3, name: "Eldhusøya viewpoint", type: "Uitzicht", score: 5, note: "Wandelpad en uitzichtpunt op de Atlantische Weg; beter dan alleen doorrijden.", search: "Eldhusøya Atlantic Road" },
+  { stage: 7, point: 4, name: "Kvernes staafkerk", type: "Cultuur", score: 3, note: "Historische kerk op Averøy, mooi als extra stop rond de Atlantische Weg.", search: "Kvernes Stave Church" },
+  { stage: 8, point: 2, name: "Dovrefjell musk ox area", type: "Natuur", score: 4, note: "Bekend gebied voor muskusossen; alleen verantwoord met tijd en afstand houden.", search: "Dovrefjell musk ox viewpoint" },
+  { stage: 8, point: 4, name: "Bakeriet i Lom", type: "Pauze", score: 3, note: "Bekende bakkerij in Lom, goede pauze rond de staafkerk.", search: "Bakeriet i Lom" },
+  { stage: 8, point: 5, name: "Sognefjellet", type: "Scenic route", score: 5, note: "Hoogste bergpasroute van Noord-Europa; alleen als hij logisch in jullie dag past.", search: "Sognefjellet scenic route Norway" },
+  { stage: 9, point: 0, name: "Gjende en Besseggen", type: "Meer/wandeling", score: 5, note: "Iconische Jotunheimen-plek; meer dagactiviteit dan snelle stop.", search: "Gjende Besseggen Jotunheimen" },
+  { stage: 9, point: 1, name: "Valdresflye", type: "Scenic route", score: 5, note: "Open berglandschap tussen Jotunheimen en Valdres, erg sterk bij helder weer.", search: "Valdresflye scenic route" },
+  { stage: 9, point: 6, name: "Karlstad centrum en Klarälven", type: "Stad", score: 2, note: "Logische Zweden-stop voor avondeten of korte wandeling aan de rivier.", search: "Karlstad Klarälven" },
+  { stage: 10, point: 1, name: "Universeum Göteborg", type: "Kinderen", score: 3, note: "Goed indoor alternatief als weer of energie niet meewerkt.", search: "Universeum Gothenburg" },
+  { stage: 10, point: 2, name: "Ribersborg Malmö", type: "Kust", score: 2, note: "Strand/kustpauze bij Malmö voor de lange terugrit.", search: "Ribersborg Malmö" },
+  { stage: 10, point: 5, name: "Lüneburger Heide", type: "Natuur", score: 2, note: "Mogelijke rustige pauze tussen Hamburg en Nederland als de terugreis lang wordt.", search: "Lüneburger Heide viewpoint" },
+];
+
 function openTotalRoute() {
   showTab("total");
 }
@@ -2024,6 +2080,79 @@ function initDashboardRoute() {
   setTimeout(() => dashboardRouteMap.invalidateSize(), 80);
 }
 
+
+function getRouteStageOffsets() {
+  const offsets = [];
+  let total = 0;
+  ROUTE_STAGES.forEach((points) => {
+    offsets.push(total);
+    total += points.length;
+  });
+  return offsets;
+}
+
+function getRouteProgressIndex() {
+  const track = getSavedTrack();
+  const last = track[track.length - 1];
+  if (!last) return -1;
+  const routePoints = ROUTE_STAGES.flat();
+  let nearestIndex = -1;
+  let nearestDistance = Infinity;
+  routePoints.forEach((point, index) => {
+    const distance = distanceKm([last.lat, last.lon], point);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+  return nearestDistance <= 80 ? nearestIndex : -1;
+}
+
+function getHighlightRouteIndex(highlight) {
+  const offsets = getRouteStageOffsets();
+  return (offsets[highlight.stage] || 0) + Math.max(0, highlight.point || 0);
+}
+
+function getRemainingRouteHighlights() {
+  const progressIndex = getRouteProgressIndex();
+  if (progressIndex < 0) return TOTAL_ROUTE_HIGHLIGHTS;
+  return TOTAL_ROUTE_HIGHLIGHTS.filter((highlight) => getHighlightRouteIndex(highlight) >= progressIndex - 1);
+}
+
+function getHighlightMapsUrl(highlight) {
+  return `https://www.google.com/maps/search/${encodeURIComponent(highlight.search || highlight.name)}`;
+}
+
+function renderTotalRouteHighlights() {
+  const container = document.getElementById("totalRouteHighlights");
+  if (!container) return;
+  const remaining = getRemainingRouteHighlights();
+  const progressKnown = getRouteProgressIndex() >= 0;
+  const countText = progressKnown
+    ? `${remaining.length} tips nog voor jullie routepositie.`
+    : `${remaining.length} tips langs de totale route. Start GPS om bezochte punten automatisch te verbergen.`;
+  container.innerHTML = `
+    <div class="total-highlights-head">
+      <div>
+        <p class="eyebrow">Nog te bekijken</p>
+        <h3>Bezienswaardigheden langs de totaalroute</h3>
+        <p class="muted">${countText}</p>
+      </div>
+      <a class="linkbtn" target="_blank" href="${getTotalMapUrl()}">Route in Google Maps</a>
+    </div>
+    <div class="total-highlight-list">
+      ${remaining.map((highlight) => `
+        <article class="total-highlight score-${highlight.score}">
+          <div>
+            <span>${highlight.type}</span>
+            <h4>${highlight.name}</h4>
+            <p>${highlight.note}</p>
+          </div>
+          <a class="linkbtn mapsbtn" target="_blank" href="${getHighlightMapsUrl(highlight)}">Google Pin</a>
+        </article>`).join("")}
+    </div>`;
+}
+
 function initTotalRoute() {
   if (typeof L === "undefined") {
     setRouteStatus("Kaartbibliotheek kon niet laden. Controleer de internetverbinding.");
@@ -2046,6 +2175,7 @@ function initTotalRoute() {
 
   setTimeout(() => totalRouteMap.invalidateSize(), 80);
   centerTotalRoute();
+  renderTotalRouteHighlights();
 }
 
 async function getStageGeometry(points) {
