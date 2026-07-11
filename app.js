@@ -45,6 +45,7 @@ let newMemberName = "";
 let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
 let viewRoleMode = localStorage.getItem("reisapp_view_role") || "";
+let adminMemberView = localStorage.getItem("reisapp_admin_member_view") || "all";
 let themeMode = localStorage.getItem("reisapp_theme") || "dark";
 let activeStage = Number(localStorage.getItem("reisapp_active_stage") || 0);
 let driving = localStorage.getItem("reisapp_driving") === "true";
@@ -248,6 +249,12 @@ function setViewRoleMode(role) {
   viewRoleMode = Object.prototype.hasOwnProperty.call(VIEW_ROLES, role) ? role : "";
   localStorage.setItem("reisapp_view_role", viewRoleMode);
   render();
+}
+
+function setAdminMemberView(view) {
+  adminMemberView = ["all", "joined", "invites"].includes(view) ? view : "all";
+  localStorage.setItem("reisapp_admin_member_view", adminMemberView);
+  renderAdminPanel();
 }
 
 function clearLocalTestData() {
@@ -1614,6 +1621,17 @@ function renderDiaryComposer(stageIndex) {
 function renderAdminPanel() {
   const members = getMembers();
   if (!document.getElementById("adminPanel")) return;
+  const joinedMembers = members.filter((member) => member.joined || member.id === currentUserId);
+  const inviteMembers = members.filter((member) => !member.joined && member.id !== currentUserId);
+  const visibleMembers =
+    adminMemberView === "joined" ? joinedMembers :
+    adminMemberView === "invites" ? inviteMembers :
+    members;
+  const memberViewButtons = [
+    ["all", `Alle (${members.length})`],
+    ["joined", `Ingelogd (${joinedMembers.length})`],
+    ["invites", `Uitnodigingen (${inviteMembers.length})`],
+  ];
 
   document.getElementById("adminPanel").innerHTML = `
     <section class="admin-panel">
@@ -1651,11 +1669,25 @@ function renderAdminPanel() {
       </div>
       <p class="muted">Administrator voeg je niet via een link toe. Maak iemand eerst lid en wijzig daarna bewust de rol naar Administrator.</p>
 
+      <div class="member-view-tabs" aria-label="Ledenfilter">
+        ${memberViewButtons
+          .map(
+            ([key, label]) => `
+              <button class="view-mode-btn ${adminMemberView === key ? "active" : ""}" onclick="setAdminMemberView('${key}')">
+                ${label}
+              </button>
+            `
+          )
+          .join("")}
+      </div>
+
       <div class="member-list">
         ${authMessage ? `<p class="admin-message">${authMessage}</p>` : ""}
-        ${members
-          .map(
-            (member) => `
+        ${
+          visibleMembers.length
+            ? visibleMembers
+                .map(
+                  (member) => `
               <div class="member-row">
                 <input value="${member.name}" onchange="updateMemberName('${member.id}', this.value)">
                 <select onchange="updateMemberRole('${member.id}', this.value)">
@@ -1663,7 +1695,7 @@ function renderAdminPanel() {
                     .map(([key, label]) => `<option value="${key}" ${member.role === key ? "selected" : ""}>${label}</option>`)
                     .join("")}
                 </select>
-                <span class="member-current">${member.id === currentUserId ? "Actief" : member.joined ? "Gekoppeld" : member.email || "Uitnodiging klaar"}</span>
+                <span class="member-current">${member.id === currentUserId ? "Actief" : member.joined ? "Ingelogd" : member.email || "Uitnodiging"}</span>
                 ${
                   isCloudMode() && member.inviteToken && !member.joined
                     ? `<a class="linkbtn mapsbtn" target="_blank" href="${getWhatsAppShareUrl(member)}">WhatsApp openen</a>
@@ -1676,8 +1708,10 @@ function renderAdminPanel() {
                 <button class="linkbtn stopbtn" onclick="removeMember('${member.id}')">Verwijderen</button>
               </div>
             `
-          )
-          .join("")}
+                )
+                .join("")
+            : `<p class="muted">Geen leden in deze weergave.</p>`
+        }
       </div>
 
       <div class="role-matrix">

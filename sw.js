@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v23-role-update";
+const CACHE_NAME = "rondreis-noorwegen-2026-v24-member-tabs";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260711-role-update",
-  "./app.js?v=20260711-role-update",
+  "./style.css?v=20260711-member-tabs",
+  "./app.js?v=20260711-member-tabs",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260711-role-update",
+  "./data/stages.js?v=20260711-member-tabs",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

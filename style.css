@@ -1250,6 +1250,14 @@ button:hover,
   align-items: center;
 }
 
+.member-view-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 4px 0;
+}
+
 .member-row {
   display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(145px, 180px) minmax(110px, 1fr) auto auto auto auto;
