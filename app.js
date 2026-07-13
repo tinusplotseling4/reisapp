@@ -41,6 +41,8 @@ let remoteMembers = null;
 let remoteDiaryEntries = [];
 let remoteDiaryMedia = [];
 let remoteGpsPoints = [];
+let remoteVisitedPois = [];
+let remoteVisitedPoisLoaded = false;
 let newMemberName = "";
 let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
@@ -654,6 +656,8 @@ async function initAuth() {
       remoteTrip = null;
       remoteMembers = null;
       remoteGpsPoints = [];
+      remoteVisitedPois = [];
+      remoteVisitedPoisLoaded = false;
       stopSharedGpsRefresh();
       render();
     }
@@ -821,8 +825,69 @@ async function loadRemoteState() {
 
   remoteMembers = members || [];
   currentUserId = authUser.id;
+  await loadRemoteVisitedPois();
+  await syncLocalVisitedPoisToRemote();
   await loadRemoteDiary();
   await loadRemoteGps();
+}
+
+async function loadRemoteVisitedPois() {
+  if (!isCloudMode() || !remoteTrip) return;
+
+  const { data, error } = await supabaseClient
+    .from("visited_pois")
+    .select("id, stage_index, poi_index, user_id, visited_at")
+    .eq("trip_id", remoteTrip.id)
+    .order("visited_at", { ascending: true });
+
+  if (error) {
+    console.warn("Visited POIs could not be loaded", error);
+    remoteVisitedPois = [];
+    remoteVisitedPoisLoaded = false;
+    return;
+  }
+
+  remoteVisitedPois = data || [];
+  remoteVisitedPoisLoaded = true;
+}
+
+async function syncLocalVisitedPoisToRemote() {
+  if (!isCloudMode() || !remoteTrip || !authUser || !remoteVisitedPoisLoaded) return;
+
+  const rows = [];
+  STAGES.forEach((stage, stageIndex) => {
+    stage.pois.forEach((_, poiIndex) => {
+      const alreadyRemote = remoteVisitedPois.some(
+        (item) =>
+          item.stage_index === stageIndex &&
+          item.poi_index === poiIndex &&
+          item.user_id === authUser.id
+      );
+
+      if (isLocalPoiVisited(stageIndex, poiIndex) && !alreadyRemote) {
+        rows.push({
+          trip_id: remoteTrip.id,
+          stage_index: stageIndex,
+          poi_index: poiIndex,
+          user_id: authUser.id,
+          visited_at: new Date().toISOString(),
+        });
+      }
+    });
+  });
+
+  if (!rows.length) return;
+
+  const { error } = await supabaseClient
+    .from("visited_pois")
+    .upsert(rows, { onConflict: "trip_id,stage_index,poi_index,user_id" });
+
+  if (error) {
+    authMessage = error.message;
+    return;
+  }
+
+  await loadRemoteVisitedPois();
 }
 
 async function loadRemoteDiary() {
@@ -1161,10 +1226,51 @@ function openStage(index) {
   render();
 }
 
-function toggleVisited(key) {
+function isLocalPoiVisited(stageIndex, poiIndex) {
+  return localStorage.getItem(poiKey(stageIndex, poiIndex)) === "true";
+}
+
+function isPoiVisited(stageIndex, poiIndex) {
+  if (isCloudMode() && remoteTrip && remoteVisitedPoisLoaded) {
+    return remoteVisitedPois.some(
+      (item) => item.stage_index === stageIndex && item.poi_index === poiIndex
+    );
+  }
+  return isLocalPoiVisited(stageIndex, poiIndex);
+}
+
+async function toggleVisited(stageIndex, poiIndex) {
   if (!canMarkVisited()) return;
-  const current = localStorage.getItem(key) === "true";
+  const key = poiKey(stageIndex, poiIndex);
+  const current = isPoiVisited(stageIndex, poiIndex);
   localStorage.setItem(key, String(!current));
+
+  if (isCloudMode() && remoteTrip && authUser) {
+    if (current) {
+      const { error } = await supabaseClient
+        .from("visited_pois")
+        .delete()
+        .eq("trip_id", remoteTrip.id)
+        .eq("stage_index", stageIndex)
+        .eq("poi_index", poiIndex)
+        .eq("user_id", authUser.id);
+      if (error) authMessage = error.message;
+    } else {
+      const { error } = await supabaseClient.from("visited_pois").upsert(
+        {
+          trip_id: remoteTrip.id,
+          stage_index: stageIndex,
+          poi_index: poiIndex,
+          user_id: authUser.id,
+          visited_at: new Date().toISOString(),
+        },
+        { onConflict: "trip_id,stage_index,poi_index,user_id" }
+      );
+      if (error) authMessage = error.message;
+    }
+    await loadRemoteVisitedPois();
+  }
+
   render();
 }
 
@@ -1797,10 +1903,14 @@ function getVisitedCount() {
   let count = 0;
   STAGES.forEach((stage, stageIndex) => {
     stage.pois.forEach((_, poiIndex) => {
-      if (localStorage.getItem(poiKey(stageIndex, poiIndex)) === "true") count++;
+      if (isPoiVisited(stageIndex, poiIndex)) count++;
     });
   });
   return count;
+}
+
+function getTotalPoiCount() {
+  return STAGES.reduce((total, stage) => total + stage.pois.length, 0);
 }
 
 function getMustSeeCount() {
@@ -1811,7 +1921,7 @@ function getMustSeenCount() {
   let count = 0;
   STAGES.forEach((stage, stageIndex) => {
     stage.pois.forEach((poi, poiIndex) => {
-      if (poi[1] >= 5 && localStorage.getItem(poiKey(stageIndex, poiIndex)) === "true") count++;
+      if (poi[1] >= 5 && isPoiVisited(stageIndex, poiIndex)) count++;
     });
   });
   return count;
@@ -2604,14 +2714,14 @@ function renderDashboard() {
       </div>
 
       <div class="dashcard">
-        <span class="dashicon">Stops</span>
-        <span class="dashnum">${getVisitedCount()}</span>
-        <span class="dashlabel">Stops gedaan</span>
+        <span class="dashicon">Must-see</span>
+        <span class="dashnum">${getMustSeenCount()}/${getMustSeeCount()}</span>
+        <span class="dashlabel">Must-sees gedaan</span>
       </div>
 
       <div class="dashcard">
-        <span class="dashicon">Seen</span>
-        <span class="dashnum">${getMustSeenCount()}</span>
+        <span class="dashicon">Gezien</span>
+        <span class="dashnum">${getVisitedCount()}/${getTotalPoiCount()}</span>
         <span class="dashlabel">Bezienswaardigheden gezien</span>
       </div>
 
@@ -3423,8 +3533,7 @@ function renderStages() {
           <h3>Hoogtepunten</h3>
           ${stage.pois
             .map((poi, poiIndex) => {
-              const key = poiKey(activeStage, poiIndex);
-              const visited = localStorage.getItem(key) === "true";
+              const visited = isPoiVisited(activeStage, poiIndex);
 
               return `
                 <div class="poi ${visited ? "visited" : ""}">
@@ -3437,7 +3546,7 @@ function renderStages() {
                     <a target="_blank" class="linkbtn" href="${poi[3]}">Pin</a>
                     ${
                       canMarkVisited()
-                        ? `<button class="linkbtn visitbtn ${visited ? "done" : ""}" onclick="toggleVisited('${key}')">
+                        ? `<button class="linkbtn visitbtn ${visited ? "done" : ""}" onclick="toggleVisited(${activeStage}, ${poiIndex})">
                             ${visited ? "Bezocht" : "Markeer bezocht"}
                           </button>`
                         : ""
