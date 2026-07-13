@@ -1071,9 +1071,18 @@ function canSeeAdminFiles() {
   return role === "admin" || role === "leader";
 }
 
-function canEditDiary() {
+function canCreateDiaryEntry() {
+  const role = getCurrentRole();
+  return role === "admin" || role === "leader" || role === "traveler" || role === "follower";
+}
+
+function canAddDiaryMedia() {
   const role = getCurrentRole();
   return role === "admin" || role === "leader" || role === "traveler";
+}
+
+function canEditDiary() {
+  return canAddDiaryMedia();
 }
 
 function canMarkVisited() {
@@ -1182,6 +1191,7 @@ function getStageDiary(index) {
           transcript: entry.transcript || "",
           photos: media.filter((item) => item.kind === "photo").map((item) => item.url).filter(Boolean),
           audioData: media.find((item) => item.kind === "audio")?.url || "",
+          userId: entry.user_id,
         };
       });
   }
@@ -1587,10 +1597,14 @@ function renderDiaryComposer(stageIndex) {
   return `
     <div class="diary-composer">
       <div class="diary-options">
-        <button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="openDiaryPhotoInput('camera')">Foto maken</button>
-        <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>
+        ${
+          canAddDiaryMedia()
+            ? `<button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="openDiaryPhotoInput('camera')">Foto maken</button>
+               <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>`
+            : ""
+        }
         <button class="linkbtn ${diaryDraft.mode === "text" ? "primary" : ""}" onclick="setDiaryMode('text')">Tekst</button>
-        <button class="linkbtn ${diaryDraft.mode === "voice" ? "primary" : ""}" onclick="setDiaryMode('voice')">Microfoon</button>
+        ${canAddDiaryMedia() ? `<button class="linkbtn ${diaryDraft.mode === "voice" ? "primary" : ""}" onclick="setDiaryMode('voice')">Microfoon</button>` : ""}
       </div>
 
       <input id="diaryCameraInput" class="diary-hidden-input" type="file" accept="image/*" capture="environment" onchange="handleDiaryPhotos(this)">
@@ -1620,7 +1634,7 @@ function renderDiaryComposer(stageIndex) {
       }
 
       ${
-        diaryDraft.mode === "voice"
+        canAddDiaryMedia() && diaryDraft.mode === "voice"
           ? `<div class="voice-tools">
               <button class="linkbtn ${diaryDraft.recording ? "stopbtn" : "startbtn"}" onclick="${diaryDraft.recording ? "stopDiaryRecording()" : "startDiaryRecording()"}">
                 ${diaryDraft.recording ? "Stop opname" : "Inspreken"}
@@ -2514,6 +2528,56 @@ function renderStageDots() {
   ).join("");
 }
 
+
+function getAllDiaryPhotos() {
+  return STAGES.flatMap((stage, stageIndex) =>
+    getStageDiary(stageIndex).flatMap((entry) =>
+      (entry.photos || []).map((photo) => ({
+        photo,
+        stageIndex,
+        stageTitle: stage.title,
+        created: entry.created,
+        author: entry.author || "Reiziger",
+        note: entry.note || entry.transcript || "",
+      }))
+    )
+  );
+}
+
+function renderTravelPhotoGallery() {
+  const photos = getAllDiaryPhotos();
+  return `
+    <section class="card travel-photo-panel">
+      <div class="diary-head">
+        <div>
+          <p class="eyebrow">Reisfoto's</p>
+          <h2>Foto's van onderweg</h2>
+        </div>
+        <button class="linkbtn" onclick="showTab('days')">Naar dagroutes</button>
+      </div>
+      ${
+        photos.length
+          ? `<div class="travel-photo-grid">
+              ${photos
+                .map(
+                  (item) => `
+                    <figure class="travel-photo-item">
+                      <img src="${item.photo}" alt="Reisfoto van ${item.stageTitle}">
+                      <figcaption>
+                        <b>${item.stageTitle}</b>
+                        <span>${item.created}${item.author ? ` - ${item.author}` : ""}</span>
+                        ${item.note ? `<small>${item.note}</small>` : ""}
+                      </figcaption>
+                    </figure>
+                  `
+                )
+                .join("")}
+            </div>`
+          : `<p class="muted">Nog geen reisfoto's opgeslagen. Zodra reizigers foto's toevoegen aan het dagboek, verschijnen ze hier voor iedereen die mee mag kijken.</p>`
+      }
+    </section>
+  `;
+}
 function renderDashboard() {
   const stage = STAGES[activeStage];
   return `
@@ -2557,6 +2621,8 @@ function renderDashboard() {
         <span class="dashlabel">Notities</span>
       </div>
     </section>
+
+    ${renderTravelPhotoGallery()}
 
     <section class="dashboard-grid">
       <div class="card route-panel">
@@ -3326,7 +3392,7 @@ function renderStages() {
                     (entry) => `
                       <div class="diary-entry">
                         <span>${entry.created}${entry.author ? ` - ${entry.author}` : ""}</span>
-                        <textarea onchange="updateDiaryEntry(${activeStage}, ${entry.id}, this.value)" placeholder="Wat willen we onthouden van deze dag?">${entry.note}</textarea>
+                        ${canEditDiary() ? `<textarea onchange="updateDiaryEntry(${activeStage}, ${entry.id}, this.value)" placeholder="Wat willen we onthouden van deze dag?">${entry.note}</textarea>` : entry.note ? `<p class="diary-note-readonly">${entry.note}</p>` : ""}
                         ${
                           entry.transcript
                             ? `<p class="diary-transcript">${entry.transcript}</p>`

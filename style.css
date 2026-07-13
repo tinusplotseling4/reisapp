@@ -1267,6 +1267,52 @@ button:hover,
   resize: vertical;
 }
 
+.travel-photo-panel {
+  display: grid;
+  gap: 14px;
+  margin: 12px 0;
+}
+
+.travel-photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.travel-photo-item {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  background: var(--soft-bg);
+}
+
+.travel-photo-item img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+}
+
+.travel-photo-item figcaption {
+  display: grid;
+  gap: 4px;
+  padding: 0 10px 10px;
+}
+
+.travel-photo-item figcaption span,
+.travel-photo-item figcaption small {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.diary-note-readonly {
+  margin: 0;
+  padding: 12px;
+  background: var(--soft-bg);
+  color: var(--text);
+  font-weight: 750;
+  line-height: 1.5;
+}
 .diary-photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
