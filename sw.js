@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v32-dashboard-visited";
+const CACHE_NAME = "rondreis-noorwegen-2026-v33-calm-dashboard";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260713-dashboard-visited",
-  "./app.js?v=20260713-dashboard-visited",
+  "./style.css?v=20260713-calm-dashboard",
+  "./app.js?v=20260713-calm-dashboard",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260713-dashboard-visited",
+  "./data/stages.js?v=20260713-calm-dashboard",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

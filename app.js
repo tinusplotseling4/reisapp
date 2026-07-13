@@ -2714,14 +2714,8 @@ function renderDashboard() {
       </div>
 
       <div class="dashcard">
-        <span class="dashicon">Must-see</span>
-        <span class="dashnum">${getMustSeenCount()}/${getMustSeeCount()}</span>
-        <span class="dashlabel">Must-sees gedaan</span>
-      </div>
-
-      <div class="dashcard">
         <span class="dashicon">Gezien</span>
-        <span class="dashnum">${getVisitedCount()}/${getTotalPoiCount()}</span>
+        <span class="dashnum">${getVisitedCount()}</span>
         <span class="dashlabel">Bezienswaardigheden gezien</span>
       </div>
 
