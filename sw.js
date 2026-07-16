@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v34-follower-cleanup";
+const CACHE_NAME = "rondreis-noorwegen-2026-v35-diary-photo-status";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260716-follower-cleanup",
-  "./app.js?v=20260716-follower-cleanup",
+  "./style.css?v=20260716-diary-photo-status",
+  "./app.js?v=20260716-diary-photo-status",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260716-follower-cleanup",
+  "./data/stages.js?v=20260716-diary-photo-status",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

@@ -925,8 +925,8 @@ async function loadRemoteDiary() {
   remoteDiaryMedia = await Promise.all(
     media.map(async (item) => {
       const bucket = item.kind === "audio" ? "diary-audio" : "diary-photos";
-      const { data } = await supabaseClient.storage.from(bucket).createSignedUrl(item.storage_path, 60 * 60);
-      return { ...item, url: data?.signedUrl || "" };
+      const { data, error } = await supabaseClient.storage.from(bucket).createSignedUrl(item.storage_path, 60 * 60);
+      return { ...item, url: data?.signedUrl || "", loadError: error?.message || "" };
     })
   );
 
@@ -1295,6 +1295,8 @@ function getStageDiary(index) {
       .filter((entry) => entry.stage_index === index)
       .map((entry) => {
         const media = remoteDiaryMedia.filter((item) => item.diary_entry_id === entry.id);
+        const photoMedia = media.filter((item) => item.kind === "photo");
+        const photos = photoMedia.map((item) => item.url).filter(Boolean);
         return {
           id: entry.id,
           created: new Date(entry.created_at).toLocaleString("nl-NL", {
@@ -1306,7 +1308,8 @@ function getStageDiary(index) {
           author: getMemberName(entry.user_id),
           note: entry.note || "",
           transcript: entry.transcript || "",
-          photos: media.filter((item) => item.kind === "photo").map((item) => item.url).filter(Boolean),
+          photos,
+          photoIssueCount: photoMedia.length - photos.length,
           audioData: media.find((item) => item.kind === "audio")?.url || "",
           userId: entry.user_id,
         };
@@ -1510,7 +1513,11 @@ async function saveDiaryDraft() {
       if (diaryDraft.audioData) await uploadDiaryMedia(entry.id, diaryDraft.stageIndex, [diaryDraft.audioData], "audio");
       authMessage = "Dagboeknotitie opgeslagen voor het reisarchief.";
     } catch (mediaError) {
-      authMessage = `Notitie opgeslagen, maar media uploaden lukte niet: ${mediaError.message}`;
+      authMessage = `Foto uploaden lukte niet: ${mediaError.message}. De foto blijft hieronder staan; probeer opnieuw nadat Supabase Storage goed staat.`;
+      await loadRemoteDiary();
+      renderStages();
+      renderDashboardOnly();
+      return;
     }
 
     await loadRemoteDiary();
@@ -2665,8 +2672,24 @@ function getAllDiaryPhotos() {
   );
 }
 
+function getDiaryPhotoIssueCount() {
+  return STAGES.reduce(
+    (total, _, stageIndex) =>
+      total +
+      getStageDiary(stageIndex).filter(
+        (entry) =>
+          Number(entry.photoIssueCount || 0) > 0 ||
+          (!(entry.note || "").trim() &&
+            !(entry.transcript || "").trim() &&
+            !(entry.photos || []).length)
+      ).length,
+    0
+  );
+}
+
 function renderTravelPhotoGallery() {
   const photos = getAllDiaryPhotos();
+  const issueCount = getDiaryPhotoIssueCount();
   return `
     <section class="card travel-photo-panel">
       <div class="diary-head">
@@ -2694,7 +2717,11 @@ function renderTravelPhotoGallery() {
                 )
                 .join("")}
             </div>`
-          : `<p class="muted">Nog geen reisfoto's opgeslagen. Zodra reizigers foto's toevoegen aan het dagboek, verschijnen ze hier voor iedereen die mee mag kijken.</p>`
+          : `<p class="muted">${
+              issueCount
+                ? `${issueCount} herinnering${issueCount === 1 ? "" : "en"} gevonden, maar daar hangt nog geen laadbare foto aan. Controleer Supabase Storage of upload de foto opnieuw.`
+                : "Nog geen reisfoto's opgeslagen. Zodra reizigers foto's toevoegen aan het dagboek, verschijnen ze hier voor iedereen die mee mag kijken."
+            }</p>`
       }
     </section>
   `;
@@ -3518,6 +3545,19 @@ function renderStages() {
                             ? `<div class="diary-photo-grid saved">
                                 ${entry.photos.map((photo) => `<img src="${photo}" alt="Dagboekfoto">`).join("")}
                               </div>`
+                            : ""
+                        }
+                        ${
+                          entry.photoIssueCount
+                            ? `<p class="diary-media-warning">${entry.photoIssueCount} foto${entry.photoIssueCount === 1 ? "" : "'s"} gekoppeld, maar de fotolink kan niet worden geladen. Controleer Supabase Storage-rechten.</p>`
+                            : ""
+                        }
+                        ${
+                          !(entry.note || "").trim() &&
+                          !(entry.transcript || "").trim() &&
+                          !(entry.photos || []).length &&
+                          !entry.photoIssueCount
+                            ? `<p class="diary-media-warning">Deze herinnering heeft nog geen tekst of laadbare foto. Waarschijnlijk is de foto-upload onderweg mislukt.</p>`
                             : ""
                         }
                         ${
