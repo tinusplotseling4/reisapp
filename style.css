@@ -1402,6 +1402,15 @@ button:hover,
   line-height: 1.4;
 }
 
+.diary-save-status {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--soft-bg);
+  color: var(--light-blue);
+  font-weight: 850;
+  line-height: 1.4;
+}
+
 .voice-status {
   margin: 0;
   color: var(--light-blue);

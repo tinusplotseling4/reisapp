@@ -95,6 +95,8 @@ let diaryDraft = {
   transcript: "",
   voiceStatus: "",
   recording: false,
+  saving: false,
+  status: "",
 };
 let diaryRecorder;
 let diaryRecorderChunks = [];
@@ -1335,6 +1337,8 @@ function resetDiaryDraft(index = activeStage) {
     transcript: "",
     voiceStatus: "",
     recording: false,
+    saving: false,
+    status: "",
   };
 }
 
@@ -1419,12 +1423,14 @@ function handleDiaryPhotos(input) {
     )
   ).then((photos) => {
     diaryDraft.photos = diaryDraft.photos.concat(photos);
+    diaryDraft.status = `${photos.length} foto${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
   renderStages();
   });
 }
 
 function removeDiaryPhoto(index) {
   diaryDraft.photos = diaryDraft.photos.filter((_, photoIndex) => photoIndex !== index);
+  diaryDraft.status = diaryDraft.photos.length ? "Foto verwijderd uit dit concept." : "";
   renderStages();
 }
 
@@ -1445,15 +1451,16 @@ function getFileExtensionFromDataUrl(dataUrl, fallback = "bin") {
   return extension.replace(/[^a-z0-9]/gi, "") || fallback;
 }
 
-async function uploadDiaryMedia(entryId, stageIndex, items, kind) {
+async function uploadDiaryFiles(stageIndex, items, kind) {
   const bucket = kind === "audio" ? "diary-audio" : "diary-photos";
   const rows = [];
+  const group = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   for (let index = 0; index < items.length; index++) {
     const dataUrl = items[index];
     const fallbackExtension = kind === "audio" ? "webm" : "jpg";
     const extension = getFileExtensionFromDataUrl(dataUrl, fallbackExtension);
-    const path = `${remoteTrip.id}/${stageIndex}/${entryId}/${kind}-${Date.now()}-${index}.${extension}`;
+    const path = `${remoteTrip.id}/${stageIndex}/draft-${group}/${kind}-${index}.${extension}`;
     const blob = dataUrlToBlob(dataUrl);
     const { error: uploadError } = await supabaseClient.storage.from(bucket).upload(path, blob, {
       contentType: blob.type || "application/octet-stream",
@@ -1462,20 +1469,29 @@ async function uploadDiaryMedia(entryId, stageIndex, items, kind) {
     if (uploadError) throw uploadError;
 
     rows.push({
-      diary_entry_id: entryId,
       kind,
       storage_path: path,
       admin_only: kind === "audio",
     });
   }
 
+  return rows;
+}
+
+async function attachDiaryMedia(entryId, rows) {
   if (rows.length) {
-    const { error } = await supabaseClient.from("diary_media").insert(rows);
+    const { error } = await supabaseClient.from("diary_media").insert(
+      rows.map((row) => ({
+        ...row,
+        diary_entry_id: entryId,
+      }))
+    );
     if (error) throw error;
   }
 }
 
 async function saveDiaryDraft() {
+  if (diaryDraft.saving) return;
   const note = diaryDraft.note.trim();
   const transcript = diaryDraft.transcript.trim();
   const hasContent = note || transcript || diaryDraft.photos.length || diaryDraft.audioData;
@@ -1483,8 +1499,29 @@ async function saveDiaryDraft() {
   if (!hasContent) return;
 
   if (isCloudMode() && remoteTrip && authUser) {
+    diaryDraft.saving = true;
+    diaryDraft.status = diaryDraft.photos.length ? "Foto wordt geupload..." : "Dagboeknotitie wordt opgeslagen...";
     authMessage = "Dagboeknotitie wordt opgeslagen...";
   renderStages();
+
+    let mediaRows = [];
+    try {
+      mediaRows = mediaRows.concat(await uploadDiaryFiles(diaryDraft.stageIndex, diaryDraft.photos, "photo"));
+      if (diaryDraft.audioData) {
+        mediaRows = mediaRows.concat(await uploadDiaryFiles(diaryDraft.stageIndex, [diaryDraft.audioData], "audio"));
+      }
+    } catch (mediaError) {
+      diaryDraft.saving = false;
+      diaryDraft.status = `Foto uploaden lukte niet: ${mediaError.message}. De foto staat nog in dit concept.`;
+      authMessage = diaryDraft.status;
+      renderStages();
+      renderDiaryPanel();
+      renderDashboardOnly();
+      return;
+    }
+
+    diaryDraft.status = "Dagboekregel wordt opgeslagen...";
+    renderStages();
 
     const { data: entry, error } = await supabaseClient
       .from("diary_entries")
@@ -1499,25 +1536,21 @@ async function saveDiaryDraft() {
       .single();
 
     if (error) {
-      authMessage = `Opslaan in Supabase lukte niet: ${error.message}. Notitie lokaal bewaard.`;
-      addDiaryEntry(diaryDraft.stageIndex, {
-        note,
-        photos: diaryDraft.photos,
-        audioData: diaryDraft.audioData,
-        transcript,
-      });
-      resetDiaryDraft(diaryDraft.stageIndex);
-  renderStages();
+      diaryDraft.saving = false;
+      diaryDraft.status = `Dagboek opslaan lukte niet: ${error.message}. Probeer opnieuw.`;
+      authMessage = diaryDraft.status;
+      renderStages();
       renderDiaryPanel();
       return;
     }
 
     try {
-      await uploadDiaryMedia(entry.id, diaryDraft.stageIndex, diaryDraft.photos, "photo");
-      if (diaryDraft.audioData) await uploadDiaryMedia(entry.id, diaryDraft.stageIndex, [diaryDraft.audioData], "audio");
+      await attachDiaryMedia(entry.id, mediaRows);
       authMessage = "Dagboeknotitie opgeslagen voor het reisarchief.";
     } catch (mediaError) {
-      authMessage = `Foto uploaden lukte niet: ${mediaError.message}. De foto blijft hieronder staan; probeer opnieuw nadat Supabase Storage goed staat.`;
+      diaryDraft.saving = false;
+      diaryDraft.status = `Foto is geupload, maar koppelen aan het dagboek lukte niet: ${mediaError.message}.`;
+      authMessage = diaryDraft.status;
       await loadRemoteDiary();
       renderStages();
       renderDiaryPanel();
@@ -1781,8 +1814,12 @@ function renderDiaryComposer(stageIndex) {
           : ""
       }
 
+      ${diaryDraft.status ? `<p class="diary-save-status">${diaryDraft.status}</p>` : ""}
+
       <div class="diary-compose-actions">
-        <button class="linkbtn mapsbtn" onclick="saveDiaryDraft()">Toevoegen</button>
+        <button class="linkbtn mapsbtn" onclick="saveDiaryDraft()" ${diaryDraft.saving ? "disabled" : ""}>
+          ${diaryDraft.saving ? "Bezig..." : "Toevoegen"}
+        </button>
         <button class="linkbtn" onclick="closeDiaryComposer()">Sluiten</button>
       </div>
     </div>

@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v36-diary-tab";
+const CACHE_NAME = "rondreis-noorwegen-2026-v37-photo-upload-flow";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260716-diary-tab",
-  "./app.js?v=20260716-diary-tab",
+  "./style.css?v=20260716-photo-upload-flow",
+  "./app.js?v=20260716-photo-upload-flow",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260716-diary-tab",
+  "./data/stages.js?v=20260716-photo-upload-flow",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"
