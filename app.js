@@ -1171,6 +1171,10 @@ function canSeePracticalDayInfo() {
   return getCurrentRole() !== "follower";
 }
 
+function canSeeDiaryHistoryInStage() {
+  return getCurrentRole() === "follower";
+}
+
 function canEditLottePassport() {
   const user = getCurrentUser();
   const name = (user?.name || "").trim().toLowerCase();
@@ -3610,6 +3614,7 @@ async function openNearbyGroceryStores(stageIndex) {
 function renderStages() {
   const stage = STAGES[activeStage];
   const diary = getStageDiary(activeStage);
+  const showStageDiaryHistory = canSeeDiaryHistoryInStage();
   const fuelAdvice = getFuelAdvice(stage);
   const groceryAdvice = getGroceryAdvice(stage);
   const routeText = stage.route.join(" -> ");
@@ -3654,13 +3659,21 @@ function renderStages() {
           </div>
           ${renderDiaryComposer(activeStage)}
           ${
-            diary.length
+            canEditDiary()
+              ? `<p class="muted">Alle eerdere herinneringen staan gebundeld in het dagboek.</p>
+                 <button class="linkbtn" onclick="showTab('diary')">Open dagboek</button>`
+              : ""
+          }
+          ${
+            showStageDiaryHistory && diary.length
               ? diary
                   .map(
-                    (entry) => renderDiaryEntryContent(entry, activeStage, canEditDiary())
+                    (entry) => renderDiaryEntryContent(entry, activeStage, false)
                   )
                   .join("")
-              : `<p class="muted">Nog geen dagboeknotities voor deze dag.</p>`
+              : showStageDiaryHistory
+                ? `<p class="muted">Nog geen dagboeknotities voor deze dag.</p>`
+                : ""
           }
         </section>
 
