@@ -1138,7 +1138,7 @@ function canSeeAdminFiles() {
 
 function canCreateDiaryEntry() {
   const role = getCurrentRole();
-  return role === "admin" || role === "leader" || role === "traveler" || role === "follower";
+  return role === "admin" || role === "leader" || role === "traveler";
 }
 
 function canAddDiaryMedia() {
@@ -1162,6 +1162,17 @@ function canUpdateGps() {
 
 function canSeeWeatherTab() {
   return canUpdateGps();
+}
+
+function canSeePracticalDayInfo() {
+  return getCurrentRole() !== "follower";
+}
+
+function canEditLottePassport() {
+  const user = getCurrentUser();
+  const name = (user?.name || "").trim().toLowerCase();
+  const email = (authUser?.email || "").trim().toLowerCase();
+  return user?.id === "lotte" || name === "lotte" || email.startsWith("lotte@");
 }
 
 function stars(n) {
@@ -3552,27 +3563,33 @@ function renderStages() {
             .join("")}
         </section>
 
-        <section class="day-tool">
-          <p class="eyebrow">Overnachten</p>
-          <h3>Geadviseerde campingpunten</h3>
-          <p><b>Eerste keuze:</b> zoek rond ${stage.to}, zodat de dag netjes eindigt bij de etappebestemming.</p>
-          <p><b>Backup:</b> zoek 30-60 minuten voor ${stage.to}, handig als rijden, weer of stops uitlopen.</p>
-          <a class="textlink" target="_blank" href="https://www.google.com/maps/search/camping+near+${encodeURIComponent(stage.to)}">Campings bij eindpunt</a>
-        </section>
+        ${
+          canSeePracticalDayInfo()
+            ? `
+              <section class="day-tool">
+                <p class="eyebrow">Overnachten</p>
+                <h3>Geadviseerde campingpunten</h3>
+                <p><b>Eerste keuze:</b> zoek rond ${stage.to}, zodat de dag netjes eindigt bij de etappebestemming.</p>
+                <p><b>Backup:</b> zoek 30-60 minuten voor ${stage.to}, handig als rijden, weer of stops uitlopen.</p>
+                <a class="textlink" target="_blank" href="https://www.google.com/maps/search/camping+near+${encodeURIComponent(stage.to)}">Campings bij eindpunt</a>
+              </section>
 
-        <section class="day-tool">
-          <p class="eyebrow">Brandstof</p>
-          <h3>Tanken</h3>
-          <p><b>${fuelAdvice.title}.</b> ${fuelAdvice.body}</p>
-          ${renderFuelPriceLookup(fuelAdvice)}
-        </section>
+              <section class="day-tool">
+                <p class="eyebrow">Brandstof</p>
+                <h3>Tanken</h3>
+                <p><b>${fuelAdvice.title}.</b> ${fuelAdvice.body}</p>
+                ${renderFuelPriceLookup(fuelAdvice)}
+              </section>
 
-        <section class="day-tool">
-          <p class="eyebrow">Voorraad</p>
-          <h3>Boodschappen</h3>
-          <p><b>${groceryAdvice.title}.</b> ${groceryAdvice.body}</p>
-          ${renderGroceryLookup(groceryAdvice)}
-        </section>
+              <section class="day-tool">
+                <p class="eyebrow">Voorraad</p>
+                <h3>Boodschappen</h3>
+                <p><b>${groceryAdvice.title}.</b> ${groceryAdvice.body}</p>
+                ${renderGroceryLookup(groceryAdvice)}
+              </section>
+            `
+            : ""
+        }
       </div>
     </div>
   `;
@@ -3586,6 +3603,7 @@ function toggleLotteOpen(index) {
 }
 
 function saveLotteItem(index, field, value) {
+  if (!canEditLottePassport()) return;
   const data = JSON.parse(localStorage.getItem("lotte_items") || "{}");
   data[index] = data[index] || {};
   data[index][field] = value;
@@ -3594,6 +3612,7 @@ function saveLotteItem(index, field, value) {
 }
 
 function saveLottePhoto(index, input) {
+  if (!canEditLottePassport()) return;
   const file = input.files[0];
   if (!file) return;
 
@@ -3622,6 +3641,7 @@ function renderLotte() {
 
   const saved = JSON.parse(localStorage.getItem("lotte_items") || "{}");
   const open = JSON.parse(localStorage.getItem("lotte_open") || "{}");
+  const canEdit = canEditLottePassport();
 
   document.getElementById("lotteList").innerHTML = `
     <div class="lotte-list">
@@ -3634,7 +3654,7 @@ function renderLotte() {
             <div class="lotte-item ${data.checked ? "checked" : ""}">
               <div class="lotte-main" onclick="toggleLotteOpen(${index})">
                 <label onclick="event.stopPropagation()">
-                  <input type="checkbox" ${data.checked ? "checked" : ""} onchange="saveLotteItem(${index}, 'checked', this.checked)">
+                  <input type="checkbox" ${data.checked ? "checked" : ""} ${canEdit ? "" : "disabled"} onchange="saveLotteItem(${index}, 'checked', this.checked)">
                   <b>${item}</b>
                 </label>
                 <span>${isOpen ? "Dicht" : "Open"}</span>
@@ -3654,24 +3674,33 @@ function renderLotte() {
                 isOpen
                   ? `
                     <div class="lotte-extra">
-                      <label>Foto toevoegen:
-                        <input type="file" accept="image/*" onchange="saveLottePhoto(${index}, this)">
-                      </label>
+                      ${
+                        canEdit
+                          ? `<label>Foto toevoegen:
+                              <input type="file" accept="image/*" onchange="saveLottePhoto(${index}, this)">
+                            </label>`
+                          : ""
+                      }
 
                       ${data.photo ? `<img class="lotte-photo" src="${data.photo}" alt="Foto">` : ""}
 
-                      <label>Vertel iets over wat je hebt gezien:
-                        <textarea onchange="saveLotteItem(${index}, 'note', this.value)" placeholder="Vertel iets over wat je hebt gezien...">${data.note || ""}</textarea>
-                      </label>
+                      ${
+                        canEdit
+                          ? `<label>Vertel iets over wat je hebt gezien:
+                              <textarea onchange="saveLotteItem(${index}, 'note', this.value)" placeholder="Vertel iets over wat je hebt gezien...">${data.note || ""}</textarea>
+                            </label>
 
-                      <label>Score:
-                        <select onchange="saveLotteItem(${index}, 'score', this.value)">
-                          <option value="">Kies score</option>
-                          ${[1, 2, 3, 4, 5]
-                            .map((n) => `<option value="${n}" ${String(data.score) === String(n) ? "selected" : ""}>${n} sterren</option>`)
-                            .join("")}
-                        </select>
-                      </label>
+                            <label>Score:
+                              <select onchange="saveLotteItem(${index}, 'score', this.value)">
+                                <option value="">Kies score</option>
+                                ${[1, 2, 3, 4, 5]
+                                  .map((n) => `<option value="${n}" ${String(data.score) === String(n) ? "selected" : ""}>${n} sterren</option>`)
+                                  .join("")}
+                              </select>
+                            </label>`
+                          : `${data.note ? `<p class="lotte-readonly-note">${data.note}</p>` : ""}
+                             ${data.score ? `<p class="lotte-readonly-score">${"*".repeat(Number(data.score))}</p>` : ""}`
+                      }
                     </div>
                   `
                   : ""

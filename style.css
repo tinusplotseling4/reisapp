@@ -1477,6 +1477,22 @@ button:hover,
   color: var(--gold);
 }
 
+.lotte-item input:disabled {
+  opacity: 0.75;
+}
+
+.lotte-readonly-note,
+.lotte-readonly-score {
+  margin: 0;
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.lotte-readonly-score {
+  color: var(--gold);
+}
+
 .lotte-extra {
   display: grid;
   gap: 10px;
