@@ -1124,6 +1124,7 @@ function showTab(id) {
     renderWeatherPanel();
     loadLiveWeather();
   }
+  if (id === "diary") renderDiaryPanel();
 }
 
 function canControlRoute() {
@@ -1391,6 +1392,7 @@ async function updateDiaryEntry(stageIndex, entryId, value) {
     if (error) authMessage = error.message;
     await loadRemoteDiary();
   renderStages();
+    renderDiaryPanel();
     renderDashboardOnly();
     return;
   }
@@ -1399,6 +1401,7 @@ async function updateDiaryEntry(stageIndex, entryId, value) {
     entry.id === entryId ? { ...entry, note: value } : entry
   );
   saveStageDiary(stageIndex, entries);
+  renderDiaryPanel();
 }
 
 function handleDiaryPhotos(input) {
@@ -1505,6 +1508,7 @@ async function saveDiaryDraft() {
       });
       resetDiaryDraft(diaryDraft.stageIndex);
   renderStages();
+      renderDiaryPanel();
       return;
     }
 
@@ -1516,6 +1520,7 @@ async function saveDiaryDraft() {
       authMessage = `Foto uploaden lukte niet: ${mediaError.message}. De foto blijft hieronder staan; probeer opnieuw nadat Supabase Storage goed staat.`;
       await loadRemoteDiary();
       renderStages();
+      renderDiaryPanel();
       renderDashboardOnly();
       return;
     }
@@ -1523,6 +1528,7 @@ async function saveDiaryDraft() {
     await loadRemoteDiary();
     resetDiaryDraft(diaryDraft.stageIndex);
   renderStages();
+    renderDiaryPanel();
     renderDashboardOnly();
     return;
   }
@@ -1535,6 +1541,7 @@ async function saveDiaryDraft() {
   });
   resetDiaryDraft(diaryDraft.stageIndex);
   renderStages();
+  renderDiaryPanel();
 }
 
 function renderDashboardOnly() {
@@ -2697,7 +2704,7 @@ function renderTravelPhotoGallery() {
           <p class="eyebrow">Reisfoto's</p>
           <h2>Foto's van onderweg</h2>
         </div>
-        <button class="linkbtn" onclick="showTab('days')">Naar dagroutes</button>
+        <button class="linkbtn" onclick="showTab('diary')">Open dagboek</button>
       </div>
       ${
         photos.length
@@ -2726,6 +2733,88 @@ function renderTravelPhotoGallery() {
     </section>
   `;
 }
+
+function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
+  return `
+    <div class="diary-entry">
+      <span>${entry.created}${entry.author ? ` - ${entry.author}` : ""}</span>
+      ${
+        allowEdit
+          ? `<textarea onchange="updateDiaryEntry(${stageIndex}, ${entry.id}, this.value)" placeholder="Wat willen we onthouden van deze dag?">${entry.note}</textarea>`
+          : entry.note
+            ? `<p class="diary-note-readonly">${entry.note}</p>`
+            : ""
+      }
+      ${entry.transcript ? `<p class="diary-transcript">${entry.transcript}</p>` : ""}
+      ${
+        entry.photos && entry.photos.length
+          ? `<div class="diary-photo-grid saved">
+              ${entry.photos.map((photo) => `<img src="${photo}" alt="Dagboekfoto">`).join("")}
+            </div>`
+          : ""
+      }
+      ${
+        entry.photoIssueCount
+          ? `<p class="diary-media-warning">${entry.photoIssueCount} foto${entry.photoIssueCount === 1 ? "" : "'s"} gekoppeld, maar de fotolink kan niet worden geladen. Controleer Supabase Storage-rechten.</p>`
+          : ""
+      }
+      ${
+        !(entry.note || "").trim() &&
+        !(entry.transcript || "").trim() &&
+        !(entry.photos || []).length &&
+        !entry.photoIssueCount
+          ? `<p class="diary-media-warning">Deze herinnering heeft nog geen tekst of laadbare foto. Waarschijnlijk is de foto-upload onderweg mislukt.</p>`
+          : ""
+      }
+      ${entry.audioData && canSeeAdminFiles() ? `<audio class="diary-audio" controls src="${entry.audioData}"></audio>` : ""}
+    </div>
+  `;
+}
+
+function renderDiaryPanel() {
+  const panel = document.getElementById("diaryPanel");
+  if (!panel) return;
+
+  const totalEntries = STAGES.reduce((total, _, index) => total + getStageDiary(index).length, 0);
+
+  panel.innerHTML = `
+    <section class="card trip-diary-panel">
+      <div class="diary-head">
+        <div>
+          <p class="eyebrow">Reisdagboek</p>
+          <h2>Dagboek per dag</h2>
+        </div>
+        <button class="linkbtn" onclick="showTab('days')">Naar dagroutes</button>
+      </div>
+      ${
+        totalEntries
+          ? `<div class="trip-diary-days">
+              ${STAGES.map((stage, index) => {
+                const entries = getStageDiary(index);
+                return `
+                  <section class="trip-diary-day">
+                    <div class="trip-diary-day-head">
+                      <span class="day-badge">Dag<br>${index + 1}</span>
+                      <div>
+                        <h3>${stage.title}</h3>
+                        <p class="muted">${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</p>
+                      </div>
+                    </div>
+                    ${
+                      entries.length
+                        ? entries.map((entry) => renderDiaryEntryContent(entry, index, canEditDiary())).join("")
+                        : `<p class="muted">Nog geen dagboek voor deze dag.</p>`
+                    }
+                  </section>
+                `;
+              }).join("")}
+            </div>`
+          : `<p class="muted">Nog geen dagboeknotities toegevoegd.</p>`
+      }
+    </section>
+  `;
+}
+
 function renderDashboard() {
   const stage = STAGES[activeStage];
   return `
@@ -3531,42 +3620,7 @@ function renderStages() {
             diary.length
               ? diary
                   .map(
-                    (entry) => `
-                      <div class="diary-entry">
-                        <span>${entry.created}${entry.author ? ` - ${entry.author}` : ""}</span>
-                        ${canEditDiary() ? `<textarea onchange="updateDiaryEntry(${activeStage}, ${entry.id}, this.value)" placeholder="Wat willen we onthouden van deze dag?">${entry.note}</textarea>` : entry.note ? `<p class="diary-note-readonly">${entry.note}</p>` : ""}
-                        ${
-                          entry.transcript
-                            ? `<p class="diary-transcript">${entry.transcript}</p>`
-                            : ""
-                        }
-                        ${
-                          entry.photos && entry.photos.length
-                            ? `<div class="diary-photo-grid saved">
-                                ${entry.photos.map((photo) => `<img src="${photo}" alt="Dagboekfoto">`).join("")}
-                              </div>`
-                            : ""
-                        }
-                        ${
-                          entry.photoIssueCount
-                            ? `<p class="diary-media-warning">${entry.photoIssueCount} foto${entry.photoIssueCount === 1 ? "" : "'s"} gekoppeld, maar de fotolink kan niet worden geladen. Controleer Supabase Storage-rechten.</p>`
-                            : ""
-                        }
-                        ${
-                          !(entry.note || "").trim() &&
-                          !(entry.transcript || "").trim() &&
-                          !(entry.photos || []).length &&
-                          !entry.photoIssueCount
-                            ? `<p class="diary-media-warning">Deze herinnering heeft nog geen tekst of laadbare foto. Waarschijnlijk is de foto-upload onderweg mislukt.</p>`
-                            : ""
-                        }
-                        ${
-                          entry.audioData && canSeeAdminFiles()
-                            ? `<audio class="diary-audio" controls src="${entry.audioData}"></audio>`
-                            : ""
-                        }
-                      </div>
-                    `
+                    (entry) => renderDiaryEntryContent(entry, activeStage, canEditDiary())
                   )
                   .join("")
               : `<p class="muted">Nog geen dagboeknotities voor deze dag.</p>`
@@ -3766,6 +3820,7 @@ function render() {
     document.getElementById("lotteList").innerHTML = "";
     document.getElementById("adminPanel").innerHTML = "";
     document.getElementById("weatherPanel").innerHTML = "";
+    document.getElementById("diaryPanel").innerHTML = "";
     document.getElementById("daysWeatherSummary").innerHTML = "";
     return;
   }
@@ -3775,6 +3830,7 @@ function render() {
   setTimeout(initDashboardRoute, 0);
   renderDaysWeatherSummary();
   renderStages();
+  renderDiaryPanel();
   renderLotte();
   renderAdminPanel();
   renderWeatherPanel();

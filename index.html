@@ -12,7 +12,7 @@
 <link rel="icon" href="assets/images/icons/app-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20260716-diary-photo-status">
+<link rel="stylesheet" href="style.css?v=20260716-diary-tab">
 </head>
 <body>
 <main class="app-shell">
@@ -24,6 +24,7 @@
       <button onclick="showTab('map')">Dashboard</button>
       <button onclick="openTotalRoute()">Totaalroute</button>
       <button onclick="showTab('days')">Dagroutes</button>
+      <button onclick="showTab('diary')">Dagboek</button>
       <button onclick="showTab('lotte')">Lotte</button>
       <button id="weatherNavButton" onclick="showTab('weather')">Weer</button>
       <button id="adminNavButton" onclick="showTab('admin')">Beheer</button>
@@ -69,6 +70,10 @@
     <div id="weatherPanel"></div>
   </section>
 
+  <section id="diary" class="tab">
+    <div id="diaryPanel"></div>
+  </section>
+
   <section id="lotte" class="tab">
     <div class="card">
       <p class="eyebrow">Voor Lotte</p>
@@ -88,11 +93,11 @@
   </section>
 </main>
 
-<script src="data/stages.js?v=20260716-diary-photo-status"></script>
+<script src="data/stages.js?v=20260716-diary-tab"></script>
 <script src="data/app-config.public.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20260716-diary-photo-status"></script>
+<script src="app.js?v=20260716-diary-tab"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -103,7 +108,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260716-diary-photo-status").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260716-diary-tab").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;
