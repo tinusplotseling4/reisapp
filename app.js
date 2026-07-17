@@ -1227,7 +1227,7 @@ function getStageDateLabel(index) {
 function getStageDateBadge(index) {
   const date = getStageDate(index);
   return {
-    top: date.toLocaleDateString("nl-NL", { weekday: "short" }),
+    top: `Dag ${index + 1}`,
     bottom: date.toLocaleDateString("nl-NL", { day: "numeric", month: "short" }),
   };
 }
