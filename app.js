@@ -1217,7 +1217,7 @@ function getStageDate(index) {
 
 function getStageDateLabel(index) {
   return getStageDate(index).toLocaleDateString("nl-NL", {
-    weekday: "short",
+    weekday: "long",
     day: "numeric",
     month: "long",
   });
