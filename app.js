@@ -1216,11 +1216,12 @@ function getStageDate(index) {
 }
 
 function getStageDateLabel(index) {
-  return getStageDate(index).toLocaleDateString("nl-NL", {
+  const dateLabel = getStageDate(index).toLocaleDateString("nl-NL", {
     weekday: "long",
     day: "numeric",
     month: "long",
   });
+  return `Dag ${index + 1} ${dateLabel}`;
 }
 
 function getStageDateBadge(index) {
