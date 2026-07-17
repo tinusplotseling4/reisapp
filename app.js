@@ -25,6 +25,7 @@ const DEFAULT_MEMBERS = [
 ];
 
 const TRIP_TITLE = "Rondreis Noorwegen 2026";
+const TRIP_START_DATE = "2026-07-20T12:00:00+02:00";
 const FUEL_TYPES = {
   diesel: "Diesel",
   e10: "Benzine E10",
@@ -1206,6 +1207,20 @@ function getGoogleNavigationUrl(stage) {
   }
 
   return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function getStageDate(index) {
+  const date = new Date(TRIP_START_DATE);
+  date.setDate(date.getDate() + index);
+  return date;
+}
+
+function getStageDateLabel(index) {
+  return getStageDate(index).toLocaleDateString("nl-NL", {
+    weekday: "short",
+    day: "numeric",
+    month: "long",
+  });
 }
 
 function toggleDriving(mapsUrl = "") {
@@ -2838,7 +2853,7 @@ function renderDiaryPanel() {
                       <span class="day-badge">Dag<br>${index + 1}</span>
                       <div>
                         <h3>${stage.title}</h3>
-                        <p class="muted">${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</p>
+                        <p class="muted">${getStageDateLabel(index)} - ${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</p>
                       </div>
                     </div>
                     ${
@@ -2908,6 +2923,7 @@ function renderDashboard() {
                 <span class="stage-row-main">
                   <b>${item.title}</b>
                   <small>${item.goal}</small>
+                  <small>${getStageDateLabel(index)}</small>
                 </span>
                 <span class="stage-row-meta">${item.km}<br>${item.time}</span>
               </button>
@@ -2922,7 +2938,7 @@ function renderDashboard() {
           <span class="day-badge large">Dag<br>${activeStage + 1}</span>
           <div>
             <h2>${stage.title}</h2>
-            <p class="muted">${stage.goal}</p>
+            <p class="muted">${getStageDateLabel(activeStage)} - ${stage.goal}</p>
           </div>
         </div>
 
@@ -3630,7 +3646,7 @@ function renderStages() {
           : ""
       }
 
-      <p class="eyebrow">${stage.day}</p>
+      <p class="eyebrow">${stage.day} / ${getStageDateLabel(activeStage)}</p>
       <h1>${stage.title}</h1>
 
       <div class="meta">
