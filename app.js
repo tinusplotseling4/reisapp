@@ -1223,6 +1223,14 @@ function getStageDateLabel(index) {
   });
 }
 
+function getStageDateBadge(index) {
+  const date = getStageDate(index);
+  return {
+    top: date.toLocaleDateString("nl-NL", { weekday: "short" }),
+    bottom: date.toLocaleDateString("nl-NL", { day: "numeric", month: "short" }),
+  };
+}
+
 function toggleDriving(mapsUrl = "") {
   const shouldStart = !driving;
   driving = shouldStart;
@@ -2847,10 +2855,11 @@ function renderDiaryPanel() {
           ? `<div class="trip-diary-days">
               ${STAGES.map((stage, index) => {
                 const entries = getStageDiary(index);
+                const dateBadge = getStageDateBadge(index);
                 return `
                   <section class="trip-diary-day">
                     <div class="trip-diary-day-head">
-                      <span class="day-badge">Dag<br>${index + 1}</span>
+                      <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
                       <div>
                         <h3>${stage.title}</h3>
                         <p class="muted">${getStageDateLabel(index)} - ${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</p>
@@ -2917,17 +2926,19 @@ function renderDashboard() {
         <h2>Etappes</h2>
         <div class="stage-list-dashboard">
           ${STAGES.map(
-            (item, index) => `
-              <button class="stage-row ${getStageStatus(index)} ${index === activeStage ? "selected" : ""}" onclick="openStage(${index})">
-                <span class="day-badge">Dag<br>${index + 1}</span>
-                <span class="stage-row-main">
-                  <b>${item.title}</b>
-                  <small>${item.goal}</small>
-                  <small>${getStageDateLabel(index)}</small>
-                </span>
-                <span class="stage-row-meta">${item.km}<br>${item.time}</span>
-              </button>
-            `
+            (item, index) => {
+              const dateBadge = getStageDateBadge(index);
+              return `
+                <button class="stage-row ${getStageStatus(index)} ${index === activeStage ? "selected" : ""}" onclick="openStage(${index})">
+                  <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
+                  <span class="stage-row-main">
+                    <b>${item.title}</b>
+                    <small>${item.goal}</small>
+                  </span>
+                  <span class="stage-row-meta">${item.km}<br>${item.time}</span>
+                </button>
+              `;
+            }
           ).join("")}
         </div>
       </div>
@@ -2935,7 +2946,7 @@ function renderDashboard() {
       <div class="card selected-stage-panel">
         <p class="eyebrow">Vandaag geselecteerd</p>
         <div class="selected-stage-head">
-          <span class="day-badge large">Dag<br>${activeStage + 1}</span>
+          <span class="day-badge large">${getStageDateBadge(activeStage).top}<br>${getStageDateBadge(activeStage).bottom}</span>
           <div>
             <h2>${stage.title}</h2>
             <p class="muted">${getStageDateLabel(activeStage)} - ${stage.goal}</p>
@@ -3646,7 +3657,7 @@ function renderStages() {
           : ""
       }
 
-      <p class="eyebrow">${stage.day} / ${getStageDateLabel(activeStage)}</p>
+      <p class="eyebrow">${getStageDateLabel(activeStage)}</p>
       <h1>${stage.title}</h1>
 
       <div class="meta">

@@ -879,7 +879,7 @@ button:hover,
 .day-badge {
   display: inline-grid;
   place-items: center;
-  min-width: 48px;
+  min-width: 64px;
   border-radius: 6px;
   padding: 7px;
   color: white;
@@ -889,7 +889,7 @@ button:hover,
 }
 
 .day-badge.large {
-  width: 56px;
+  width: 72px;
   height: 56px;
   flex: 0 0 auto;
 }
