@@ -57,6 +57,7 @@ body {
 
 .app-header {
   position: relative;
+  z-index: 3000;
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -101,7 +102,7 @@ body {
   position: absolute;
   top: calc(100% - 8px);
   left: 8px;
-  z-index: 50;
+  z-index: 3001;
   display: none;
   width: min(280px, calc(100vw - 56px));
   padding: 10px;
