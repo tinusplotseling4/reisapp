@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v44-day-number-badges";
+const CACHE_NAME = "rondreis-noorwegen-2026-v45-header-menu";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260717-day-number-badges",
-  "./app.js?v=20260717-day-number-badges",
+  "./style.css?v=20260718-header-menu",
+  "./app.js?v=20260718-header-menu",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260717-day-number-badges",
+  "./data/stages.js?v=20260718-header-menu",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

@@ -1104,7 +1104,27 @@ const ROUTE_STAGES = [
   ],
 ];
 
+function closeMainMenu() {
+  const menu = document.getElementById("mainMenu");
+  const button = document.querySelector(".menu-toggle");
+  if (menu) menu.classList.remove("open");
+  if (button) button.setAttribute("aria-expanded", "false");
+}
+
+function toggleMainMenu() {
+  const menu = document.getElementById("mainMenu");
+  const button = document.querySelector(".menu-toggle");
+  if (!menu) return;
+  const isOpen = menu.classList.toggle("open");
+  if (button) button.setAttribute("aria-expanded", String(isOpen));
+}
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".app-header")) closeMainMenu();
+});
+
 function showTab(id) {
+  closeMainMenu();
   if (isCloudMode() && !authUser) {
     id = "map";
   }

@@ -56,6 +56,7 @@ body {
 }
 
 .app-header {
+  position: relative;
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -69,6 +70,50 @@ body {
   margin: 0;
   font-size: 1.25rem;
   line-height: 1;
+}
+
+.header-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.menu-toggle {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  border-radius: 8px;
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  gap: 4px;
+}
+
+.menu-toggle span {
+  width: 20px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  display: block;
+}
+
+.header-menu {
+  position: absolute;
+  top: calc(100% - 8px);
+  left: 8px;
+  z-index: 50;
+  display: none;
+  width: min(280px, calc(100vw - 56px));
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--shell);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+}
+
+.header-menu.open {
+  display: grid;
+  gap: 10px;
 }
 
 .app-header p {
@@ -87,11 +132,29 @@ body {
 
 .app-nav {
   display: flex;
+  flex-direction: column;
   gap: 6px;
-  overflow-x: auto;
   padding: 0;
   background: transparent;
   border-bottom: 0;
+}
+
+.header-menu .app-nav button,
+.header-menu .linkbtn {
+  width: 100%;
+  justify-content: flex-start;
+  border-radius: 8px;
+}
+
+.header-menu .header-tools {
+  display: grid;
+  gap: 8px;
+  justify-content: stretch;
+}
+
+.header-menu .theme-control {
+  min-width: 0;
+  width: 100%;
 }
 
 button,

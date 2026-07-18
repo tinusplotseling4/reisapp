@@ -12,24 +12,31 @@
 <link rel="icon" href="assets/images/icons/app-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20260717-day-number-badges">
+<link rel="stylesheet" href="style.css?v=20260718-header-menu">
 </head>
 <body>
 <main class="app-shell">
   <header class="app-header">
-    <div>
+    <div class="header-main">
       <h1>Rondreis Noorwegen 2026</h1>
+      <button class="menu-toggle" type="button" aria-label="Menu openen" aria-expanded="false" onclick="toggleMainMenu()">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
     </div>
-    <nav class="app-nav">
-      <button onclick="showTab('map')">Dashboard</button>
-      <button onclick="openTotalRoute()">Totaalroute</button>
-      <button onclick="showTab('days')">Dagroutes</button>
-      <button onclick="showTab('diary')">Dagboek</button>
-      <button onclick="showTab('lotte')">Lotte</button>
-      <button id="weatherNavButton" onclick="showTab('weather')">Weer</button>
-      <button id="adminNavButton" onclick="showTab('admin')">Beheer</button>
-    </nav>
-    <div id="themeSlot"></div>
+    <div id="mainMenu" class="header-menu">
+      <nav class="app-nav">
+        <button onclick="showTab('map')">Dashboard</button>
+        <button onclick="openTotalRoute()">Totaalroute</button>
+        <button onclick="showTab('days')">Dagroutes</button>
+        <button onclick="showTab('diary')">Dagboek</button>
+        <button onclick="showTab('lotte')">Lotte</button>
+        <button id="weatherNavButton" onclick="showTab('weather')">Weer</button>
+        <button id="adminNavButton" onclick="showTab('admin')">Beheer</button>
+      </nav>
+      <div id="themeSlot"></div>
+    </div>
   </header>
 
   <section id="map" class="tab active">
@@ -93,11 +100,11 @@
   </section>
 </main>
 
-<script src="data/stages.js?v=20260717-day-number-badges"></script>
+<script src="data/stages.js?v=20260718-header-menu"></script>
 <script src="data/app-config.public.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20260717-day-number-badges"></script>
+<script src="app.js?v=20260718-header-menu"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -108,7 +115,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260717-day-number-badges").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260718-header-menu").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;
