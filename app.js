@@ -145,6 +145,10 @@ function getPendingInviteToken() {
   return localStorage.getItem("reisapp_pending_invite") || "";
 }
 
+function isMissingInviteFunctionError(error) {
+  return /claim_trip_invite|schema cache|function .*not.*found/i.test(error?.message || "");
+}
+
 function clearPendingInviteToken() {
   localStorage.removeItem("reisapp_pending_invite");
   const url = new URL(window.location.href);
@@ -744,7 +748,10 @@ async function loadRemoteState() {
     });
 
     if (claimed.error) {
-      authMessage = claimed.error.message;
+      authMessage = isMissingInviteFunctionError(claimed.error)
+        ? "Uitnodigingen kunnen nog niet gekoppeld worden: voer in Supabase eerst docs/supabase-migration-invite-links.sql uit."
+        : claimed.error.message;
+      return;
     } else {
       clearPendingInviteToken();
       const claimedTripId = claimed.data?.[0]?.trip_id;
