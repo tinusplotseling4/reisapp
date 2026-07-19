@@ -11,6 +11,8 @@ const INVITE_ROLES = {
   follower: "Thuisblijver",
 };
 
+const OWNER_EMAILS = ["jeroenblomsma1978@gmail.com"];
+
 const VIEW_ROLES = {
   "": "Eigen weergave",
   leader: "Reisleider",
@@ -247,6 +249,7 @@ function getCurrentUser() {
 
 function getActualRole() {
   if (isCloudMode() && authUser && remoteTrip?.owner_id === authUser.id) return "admin";
+  if (isCloudMode() && OWNER_EMAILS.includes((authUser?.email || "").toLowerCase())) return "admin";
   return getCurrentUser().role;
 }
 
