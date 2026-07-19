@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v49-jeroen-admin-repair";
+const CACHE_NAME = "rondreis-noorwegen-2026-v50-stale-invite-clear";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260719-jeroen-admin-repair",
-  "./app.js?v=20260719-jeroen-admin-repair",
+  "./style.css?v=20260719-stale-invite-clear",
+  "./app.js?v=20260719-stale-invite-clear",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260719-jeroen-admin-repair",
+  "./data/stages.js?v=20260719-stale-invite-clear",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

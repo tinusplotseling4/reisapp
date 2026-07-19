@@ -151,6 +151,10 @@ function isMissingInviteFunctionError(error) {
   return /claim_trip_invite|schema cache|function .*not.*found/i.test(error?.message || "");
 }
 
+function isStaleInviteError(error) {
+  return /uitnodiging is niet geldig|al gebruikt|invalid|used/i.test(error?.message || "");
+}
+
 function clearPendingInviteToken() {
   localStorage.removeItem("reisapp_pending_invite");
   const url = new URL(window.location.href);
@@ -752,10 +756,17 @@ async function loadRemoteState() {
     });
 
     if (claimed.error) {
-      authMessage = isMissingInviteFunctionError(claimed.error)
-        ? "Uitnodigingen kunnen nog niet gekoppeld worden: voer in Supabase eerst docs/supabase-migration-invite-links.sql uit."
-        : claimed.error.message;
-      return;
+      if (isMissingInviteFunctionError(claimed.error)) {
+        authMessage = "Uitnodigingen kunnen nog niet gekoppeld worden: voer in Supabase eerst docs/supabase-migration-invite-links.sql uit.";
+        return;
+      }
+      if (isStaleInviteError(claimed.error)) {
+        clearPendingInviteToken();
+        authMessage = "Oude uitnodigingslink genegeerd. Ik laad nu de bestaande reisleden.";
+      } else {
+        authMessage = claimed.error.message;
+        return;
+      }
     } else {
       clearPendingInviteToken();
       const claimedTripId = claimed.data?.[0]?.trip_id;
