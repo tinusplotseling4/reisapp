@@ -213,7 +213,7 @@ function getMembers() {
       id: member.user_id || member.id,
       memberId: member.id,
       name: member.display_name,
-      role: member.role,
+      role: member.user_id && remoteTrip?.owner_id === member.user_id ? "admin" : member.role,
       email: member.invited_email || "",
       inviteToken: member.invite_token || "",
       joined: Boolean(member.joined_at),
@@ -246,6 +246,7 @@ function getCurrentUser() {
 }
 
 function getActualRole() {
+  if (isCloudMode() && authUser && remoteTrip?.owner_id === authUser.id) return "admin";
   return getCurrentUser().role;
 }
 
@@ -820,6 +821,12 @@ async function loadRemoteState() {
       joined_at: new Date().toISOString(),
     });
     if (error) authMessage = error.message;
+  } else if (remoteTrip.owner_id === authUser.id && existingMember.role !== "admin") {
+    const { error } = await supabaseClient
+      .from("trip_members")
+      .update({ role: "admin", joined_at: existingMember.joined_at || new Date().toISOString() })
+      .eq("id", existingMember.id);
+    if (error) authMessage = `Eigenaar bleef geen Administrator: ${error.message}`;
   }
 
   const { data: members, error: membersError } = await supabaseClient
