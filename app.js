@@ -1228,7 +1228,14 @@ function canEditLottePassport() {
   const user = getCurrentUser();
   const name = (user?.name || "").trim().toLowerCase();
   const email = (authUser?.email || "").trim().toLowerCase();
-  return user?.id === "lotte" || name === "lotte" || email.startsWith("lotte@");
+  const role = getActualRole();
+  return (
+    role === "admin" ||
+    role === "traveler" ||
+    user?.id === "lotte" ||
+    name.includes("lotte") ||
+    email.includes("lotte")
+  );
 }
 
 function stars(n) {
