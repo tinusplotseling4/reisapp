@@ -1427,6 +1427,30 @@ button:hover,
   object-fit: cover;
 }
 
+.diary-photo-caption {
+  width: 100%;
+  min-height: 76px;
+  border: 0;
+  border-radius: 0;
+  background: var(--soft-bg);
+  color: var(--text);
+  padding: 10px;
+  font: inherit;
+  resize: vertical;
+}
+
+.diary-photo-saved {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.diary-photo-saved figcaption {
+  color: var(--muted);
+  font-weight: 800;
+  line-height: 1.35;
+}
+
 .diary-entry {
   display: grid;
   gap: 7px;

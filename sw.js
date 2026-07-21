@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v51-lotte-edit-access";
+const CACHE_NAME = "rondreis-noorwegen-2026-v52-photo-captions";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260721-lotte-edit-access",
-  "./app.js?v=20260721-lotte-edit-access",
+  "./style.css?v=20260721-photo-captions",
+  "./app.js?v=20260721-photo-captions",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260721-lotte-edit-access",
+  "./data/stages.js?v=20260721-photo-captions",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg"

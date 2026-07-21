@@ -87,6 +87,7 @@ let weatherState = {
   updatedAt: "",
 };
 let locationTimer;
+let locationWatchId = null;
 let gpsRefreshTimer;
 let diaryDraft = {
   stageIndex: null,
@@ -118,6 +119,16 @@ function initSupabaseClient() {
 
 function getDefaultTripSlug() {
   return getConfig().defaultTripSlug || "noorwegen-2026";
+}
+
+function escapeHtml(value = "") {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
 }
 
 function getUserDisplayName(user) {
@@ -312,6 +323,7 @@ function clearLocalTestData() {
   remoteGpsPoints = [];
   if (locationTimer) clearInterval(locationTimer);
   locationTimer = null;
+  stopLocationWatch();
   resetTotalRoute();
   resetDashboardRoute();
   authMessage = "Lokale testdata is gewist op dit apparaat.";
@@ -940,16 +952,24 @@ async function loadRemoteDiary() {
   const entryIds = (entries || []).map((entry) => entry.id);
   let media = [];
   if (entryIds.length) {
-    const { data: mediaRows, error: mediaError } = await supabaseClient
+    let mediaResult = await supabaseClient
       .from("diary_media")
-      .select("id, diary_entry_id, kind, storage_path, admin_only, created_at")
+      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, created_at")
       .in("diary_entry_id", entryIds)
       .order("created_at", { ascending: true });
 
-    if (mediaError) {
-      authMessage = mediaError.message;
+    if (mediaResult.error && /caption|column|schema cache/i.test(mediaResult.error.message || "")) {
+      mediaResult = await supabaseClient
+        .from("diary_media")
+        .select("id, diary_entry_id, kind, storage_path, admin_only, created_at")
+        .in("diary_entry_id", entryIds)
+        .order("created_at", { ascending: true });
+    }
+
+    if (mediaResult.error) {
+      authMessage = mediaResult.error.message;
     } else {
-      media = mediaRows || [];
+      media = mediaResult.data || [];
     }
   }
 
@@ -1296,9 +1316,8 @@ function toggleDriving(mapsUrl = "") {
   if (shouldStart) {
     setGpsStatus("Etappe gestart. Eerste GPS-punt wordt opgehaald.");
     startLocationTracking();
-  } else if (locationTimer) {
-    clearInterval(locationTimer);
-    locationTimer = null;
+  } else {
+    stopLocationTracking();
     setGpsStatus("Etappe gestopt. GPS-tracking staat uit.");
     updateLiveMapStyles();
   }
@@ -1382,7 +1401,9 @@ function getStageDiary(index) {
       .map((entry) => {
         const media = remoteDiaryMedia.filter((item) => item.diary_entry_id === entry.id);
         const photoMedia = media.filter((item) => item.kind === "photo");
-        const photos = photoMedia.map((item) => item.url).filter(Boolean);
+        const photos = photoMedia
+          .map((item) => item.url ? { src: item.url, caption: item.caption || "" } : null)
+          .filter(Boolean);
         return {
           id: entry.id,
           created: new Date(entry.created_at).toLocaleString("nl-NL", {
@@ -1403,6 +1424,26 @@ function getStageDiary(index) {
   }
 
   return JSON.parse(localStorage.getItem(getStageDiaryKey(index)) || "[]");
+}
+
+function normalizeDiaryPhoto(photo) {
+  if (typeof photo === "string") return { src: photo, caption: "" };
+  return {
+    src: photo?.src || photo?.url || "",
+    caption: photo?.caption || "",
+  };
+}
+
+function getDiaryPhotoSrc(photo) {
+  return normalizeDiaryPhoto(photo).src;
+}
+
+function getDiaryPhotoCaption(photo) {
+  return normalizeDiaryPhoto(photo).caption;
+}
+
+function getDiaryPhotoItems(entry) {
+  return (entry.photos || []).map(normalizeDiaryPhoto).filter((photo) => photo.src);
 }
 
 function saveStageDiary(index, entries) {
@@ -1463,7 +1504,7 @@ function addDiaryEntry(index, entry) {
       minute: "2-digit",
     }),
     note: entry.note || "",
-    photos: entry.photos || [],
+    photos: (entry.photos || []).map(normalizeDiaryPhoto),
     audioData: entry.audioData || "",
     transcript: entry.transcript || "",
   });
@@ -1505,10 +1546,16 @@ function handleDiaryPhotos(input) {
         })
     )
   ).then((photos) => {
-    diaryDraft.photos = diaryDraft.photos.concat(photos);
+    diaryDraft.photos = diaryDraft.photos.concat(photos.map((photo) => ({ src: photo, caption: "" })));
     diaryDraft.status = `${photos.length} foto${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
   renderStages();
   });
+}
+
+function updateDiaryPhotoCaption(index, value) {
+  diaryDraft.photos = diaryDraft.photos.map((photo, photoIndex) =>
+    photoIndex === index ? { ...normalizeDiaryPhoto(photo), caption: value } : photo
+  );
 }
 
 function removeDiaryPhoto(index) {
@@ -1540,7 +1587,9 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
   const group = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   for (let index = 0; index < items.length; index++) {
-    const dataUrl = items[index];
+    const item = normalizeDiaryPhoto(items[index]);
+    const dataUrl = kind === "photo" ? item.src : items[index];
+    const caption = kind === "photo" ? item.caption.trim() : "";
     const fallbackExtension = kind === "audio" ? "webm" : "jpg";
     const extension = getFileExtensionFromDataUrl(dataUrl, fallbackExtension);
     const path = `${remoteTrip.id}/${stageIndex}/draft-${group}/${kind}-${index}.${extension}`;
@@ -1555,6 +1604,7 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
       kind,
       storage_path: path,
       admin_only: kind === "audio",
+      ...(caption ? { caption } : {}),
     });
   }
 
@@ -1569,6 +1619,17 @@ async function attachDiaryMedia(entryId, rows) {
         diary_entry_id: entryId,
       }))
     );
+    if (error && /caption|column|schema cache/i.test(error.message || "")) {
+      const { error: fallbackError } = await supabaseClient.from("diary_media").insert(
+        rows.map(({ caption, ...row }) => ({
+          ...row,
+          diary_entry_id: entryId,
+        }))
+      );
+      if (fallbackError) throw fallbackError;
+      authMessage = "Foto opgeslagen. Fototekst wordt centraal bewaard nadat de Supabase-migratie voor fototekst is uitgevoerd.";
+      return;
+    }
     if (error) throw error;
   }
 }
@@ -1859,7 +1920,7 @@ function renderDiaryComposer(stageIndex) {
 
       ${
         diaryDraft.mode === "text" || diaryDraft.mode === "voice"
-          ? `<textarea class="diary-compose-text" oninput="updateDiaryDraftNote(this.value)" placeholder="Wat willen we later terugvinden?">${diaryDraft.note}</textarea>`
+          ? `<textarea class="diary-compose-text" oninput="updateDiaryDraftNote(this.value)" placeholder="Wat willen we later terugvinden? Typ, of gebruik de microfoon op je toetsenbord.">${escapeHtml(diaryDraft.note)}</textarea>`
           : ""
       }
 
@@ -1868,12 +1929,16 @@ function renderDiaryComposer(stageIndex) {
           ? `<div class="diary-photo-grid">
               ${diaryDraft.photos
                 .map(
-                  (photo, index) => `
+                  (photo, index) => {
+                    const photoItem = normalizeDiaryPhoto(photo);
+                    return `
                     <div class="diary-photo-draft">
-                      <img src="${photo}" alt="Dagboekfoto">
+                      <img src="${photoItem.src}" alt="Dagboekfoto">
+                      <textarea class="diary-photo-caption" oninput="updateDiaryPhotoCaption(${index}, this.value)" placeholder="Tekstje bij deze foto (optioneel). Typ, of gebruik de microfoon op je toetsenbord.">${escapeHtml(photoItem.caption)}</textarea>
                       <button class="linkbtn stopbtn" onclick="removeDiaryPhoto(${index})">Verwijderen</button>
                     </div>
-                  `
+                  `;
+                  }
                 )
                 .join("")}
             </div>`
@@ -2731,22 +2796,7 @@ function updateLivePosition() {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        const point = {
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-          accuracy: Math.round(position.coords.accuracy || 0),
-          time: Date.now(),
-        };
-
-        const saved = await saveTrackPoint(point);
-        setDashboardFollowLive(true);
-        drawLivePosition(point);
-        if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
-        setGpsStatus(
-          saved.shared
-            ? `GPS-punt gedeeld. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
-            : `GPS-punt gezet op dit apparaat. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
-        );
+        await saveBrowserPosition(position);
         resolve(true);
       },
       (error) => {
@@ -2767,10 +2817,53 @@ function updateLivePosition() {
   });
 }
 
+async function saveBrowserPosition(position) {
+  const point = {
+    lat: position.coords.latitude,
+    lon: position.coords.longitude,
+    accuracy: Math.round(position.coords.accuracy || 0),
+    time: Date.now(),
+  };
+
+  const saved = await saveTrackPoint(point);
+  setDashboardFollowLive(true);
+  drawLivePosition(point);
+  if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
+  setGpsStatus(
+    saved.shared
+      ? `GPS-punt gedeeld. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+      : `GPS-punt gezet op dit apparaat. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+  );
+}
+
+function stopLocationWatch() {
+  if (locationWatchId === null || !navigator.geolocation) return;
+  navigator.geolocation.clearWatch(locationWatchId);
+  locationWatchId = null;
+}
+
+function stopLocationTracking() {
+  if (locationTimer) clearInterval(locationTimer);
+  locationTimer = null;
+  stopLocationWatch();
+}
+
 function startLocationTracking() {
   updateLivePosition();
   if (locationTimer) clearInterval(locationTimer);
   locationTimer = setInterval(updateLivePosition, 300000);
+  stopLocationWatch();
+  if (navigator.geolocation && window.isSecureContext) {
+    locationWatchId = navigator.geolocation.watchPosition(
+      saveBrowserPosition,
+      () => {},
+      {
+        enableHighAccuracy: true,
+        maximumAge: 60000,
+        timeout: 30000,
+      }
+    );
+  }
 }
 
 function renderStageDots() {
@@ -2787,13 +2880,13 @@ function renderStageDots() {
 function getAllDiaryPhotos() {
   return STAGES.flatMap((stage, stageIndex) =>
     getStageDiary(stageIndex).flatMap((entry) =>
-      (entry.photos || []).map((photo) => ({
-        photo,
+      getDiaryPhotoItems(entry).map((photo) => ({
+        photo: photo.src,
         stageIndex,
         stageTitle: stage.title,
         created: entry.created,
         author: entry.author || "Reiziger",
-        note: entry.note || entry.transcript || "",
+        note: photo.caption || entry.note || entry.transcript || "",
       }))
     )
   );
@@ -2837,7 +2930,7 @@ function renderTravelPhotoGallery() {
                       <figcaption>
                         <b>${item.stageTitle}</b>
                         <span>${item.created}${item.author ? ` - ${item.author}` : ""}</span>
-                        ${item.note ? `<small>${item.note}</small>` : ""}
+                        ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
                       </figcaption>
                     </figure>
                   `
@@ -2855,6 +2948,7 @@ function renderTravelPhotoGallery() {
 }
 
 function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
+  const photoItems = getDiaryPhotoItems(entry);
   return `
     <div class="diary-entry">
       <span>${entry.created}${entry.author ? ` - ${entry.author}` : ""}</span>
@@ -2867,9 +2961,16 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
       }
       ${entry.transcript ? `<p class="diary-transcript">${entry.transcript}</p>` : ""}
       ${
-        entry.photos && entry.photos.length
+        photoItems.length
           ? `<div class="diary-photo-grid saved">
-              ${entry.photos.map((photo) => `<img src="${photo}" alt="Dagboekfoto">`).join("")}
+              ${photoItems
+                .map((photo) => `
+                  <figure class="diary-photo-saved">
+                    <img src="${photo.src}" alt="Dagboekfoto">
+                    ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
+                  </figure>
+                `)
+                .join("")}
             </div>`
           : ""
       }
@@ -2881,7 +2982,7 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
       ${
         !(entry.note || "").trim() &&
         !(entry.transcript || "").trim() &&
-        !(entry.photos || []).length &&
+        !photoItems.length &&
         !entry.photoIssueCount
           ? `<p class="diary-media-warning">Deze herinnering heeft nog geen tekst of laadbare foto. Waarschijnlijk is de foto-upload onderweg mislukt.</p>`
           : ""
