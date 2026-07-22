@@ -3075,8 +3075,6 @@ function renderDashboard() {
       </div>
     </section>
 
-    ${renderTravelPhotoGallery()}
-
     <section class="dashboard-grid">
       <div class="card route-panel">
         <p class="eyebrow">Routeplanning</p>
@@ -3141,6 +3139,8 @@ function renderDashboard() {
           .join("")}
       </div>
     </section>
+
+    ${renderTravelPhotoGallery()}
   `;
 }
 
