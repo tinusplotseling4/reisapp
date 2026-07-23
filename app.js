@@ -1394,6 +1394,11 @@ function getDayRouteUrl(index) {
   return url.toString();
 }
 
+function openDayRoute(index) {
+  const dayWindow = window.open(getDayRouteUrl(index), "_blank", "noopener");
+  if (dayWindow) dayWindow.opener = null;
+}
+
 function openStage(index) {
   activeStage = index;
   localStorage.setItem("reisapp_active_stage", String(index));
@@ -1589,6 +1594,12 @@ function openDiaryComposer(index) {
   resetDiaryDraft(index);
   renderStages();
   renderDashboardOnly();
+  requestAnimationFrame(() => {
+    document.querySelector(".tab.active .diary-composer")?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
 }
 
 function closeDiaryComposer() {
@@ -3443,7 +3454,7 @@ function startLocationTracking() {
 function renderStageDots() {
   return STAGES.map(
     (_, index) => `
-      <button class="hero-dot ${getStageStatus(index)}" onclick="openStage(${index})" aria-label="Dag ${index + 1}">
+      <button class="hero-dot ${getStageStatus(index)}" onclick="openDayRoute(${index})" aria-label="Open dag ${index + 1}">
         ${index + 1}
       </button>
     `
@@ -3720,6 +3731,16 @@ function setDiaryDayOpen(index, open) {
 function renderDashboard() {
   const stage = STAGES[activeStage];
   return `
+    ${
+      canEditDiary()
+        ? `<div class="dashboard-top-actions">
+            <button class="linkbtn primary diary-add" onclick="openDiaryComposer(${activeStage})">
+              Dagboekherinnering toevoegen
+            </button>
+          </div>`
+        : ""
+    }
+
     ${renderUserSwitcher()}
 
     <section class="trip-hero">
@@ -3764,7 +3785,7 @@ function renderDashboard() {
             (item, index) => {
               const dateBadge = getStageDateBadge(index);
               return `
-                <button class="stage-row ${getStageStatus(index)} ${index === activeStage ? "selected" : ""}" onclick="openStage(${index})">
+                <button class="stage-row ${getStageStatus(index)} ${index === activeStage ? "selected" : ""}" onclick="openDayRoute(${index})">
                   <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
                   <span class="stage-row-main">
                     <b>${item.title}</b>

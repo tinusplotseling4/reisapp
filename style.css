@@ -234,6 +234,12 @@ button:hover,
   box-shadow: none;
 }
 
+.dashboard-top-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .trip-hero {
   min-height: 420px;
   position: relative;
@@ -1970,6 +1976,10 @@ input[type="checkbox"] {
   main {
     width: min(100% - 20px, 1180px);
     padding-top: 14px;
+  }
+
+  .dashboard-top-actions .linkbtn {
+    width: 100%;
   }
 
   .trip-hero {
