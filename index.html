@@ -12,7 +12,8 @@
 <link rel="icon" href="assets/images/icons/app-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="style.css?v=20260723-day-list-top">
+<link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
+<link rel="stylesheet" href="style.css?v=20260723-panorama">
 </head>
 <body>
 <main class="app-shell">
@@ -100,11 +101,22 @@
   </section>
 </main>
 
-<script src="data/stages.js?v=20260723-day-list-top"></script>
+<dialog id="panoramaDialog" class="panorama-dialog" onclick="closePanoramaFromBackdrop(event)" onclose="closePanorama()">
+  <div class="panorama-dialog-shell">
+    <header class="panorama-dialog-head">
+      <h2 id="panoramaTitle">360-foto</h2>
+      <button type="button" class="panorama-close" aria-label="360-foto sluiten" title="Sluiten" onclick="closePanorama()">&times;</button>
+    </header>
+    <div id="panoramaViewer" class="panorama-viewer" aria-label="Interactieve 360-foto"></div>
+  </div>
+</dialog>
+
+<script src="data/stages.js?v=20260723-panorama"></script>
 <script src="data/app-config.public.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="app.js?v=20260723-day-list-top"></script>
+<script src="assets/vendor/pannellum/pannellum.js"></script>
+<script src="app.js?v=20260723-panorama"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -115,7 +127,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260723-day-list-top").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260723-panorama").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

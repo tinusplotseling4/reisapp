@@ -71,6 +71,7 @@ create table if not exists public.diary_media (
   admin_only boolean not null default false,
   caption text,
   taken_at timestamptz,
+  projection text not null default 'flat' check (projection in ('flat', 'equirectangular')),
   created_at timestamptz not null default now()
 );
 

@@ -112,6 +112,7 @@ let diaryRecorderChunks = [];
 let diaryRecognition;
 let diaryCommentDrafts = {};
 let deferredInstallPrompt = null;
+let panoramaViewer = null;
 
 function getConfig() {
   return window.REISAPP_CONFIG || {};
@@ -962,9 +963,17 @@ async function loadRemoteDiary() {
   if (entryIds.length) {
     let mediaResult = await supabaseClient
       .from("diary_media")
-      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, created_at")
+      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, projection, created_at")
       .in("diary_entry_id", entryIds)
       .order("created_at", { ascending: true });
+
+    if (mediaResult.error && /projection|column|schema cache/i.test(mediaResult.error.message || "")) {
+      mediaResult = await supabaseClient
+        .from("diary_media")
+        .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, created_at")
+        .in("diary_entry_id", entryIds)
+        .order("created_at", { ascending: true });
+    }
 
     if (mediaResult.error && /caption|taken_at|column|schema cache/i.test(mediaResult.error.message || "")) {
       mediaResult = await supabaseClient
@@ -1464,7 +1473,15 @@ function getStageDiary(index) {
         const photos = photoMedia
           .map((item) =>
             item.url
-              ? { src: item.url, caption: item.caption || "", takenAt: item.taken_at || item.created_at || "" }
+              ? {
+                  src: item.url,
+                  caption: item.caption || "",
+                  takenAt: item.taken_at || item.created_at || "",
+                  projection:
+                    item.projection === "equirectangular" || /-360\.[a-z0-9]+$/i.test(item.storage_path || "")
+                      ? "equirectangular"
+                      : "flat",
+                }
               : null
           )
           .filter(Boolean);
@@ -1492,12 +1509,22 @@ function getStageDiary(index) {
 }
 
 function normalizeDiaryPhoto(photo) {
-  if (typeof photo === "string") return { src: photo, caption: "", takenAt: "" };
+  if (typeof photo === "string") {
+    return { src: photo, caption: "", takenAt: "", projection: "flat", file: null, width: 0, height: 0 };
+  }
   return {
     src: photo?.src || photo?.url || "",
     caption: photo?.caption || "",
     takenAt: photo?.takenAt || photo?.taken_at || "",
+    projection: photo?.projection === "equirectangular" ? "equirectangular" : "flat",
+    file: photo?.file || null,
+    width: Number(photo?.width || 0),
+    height: Number(photo?.height || 0),
   };
+}
+
+function isPanoramaPhoto(photo) {
+  return normalizeDiaryPhoto(photo).projection === "equirectangular";
 }
 
 function getDiaryPhotoSrc(photo) {
@@ -1529,6 +1556,10 @@ function saveStageDiary(index, entries) {
 }
 
 function resetDiaryDraft(index = activeStage) {
+  diaryDraft.photos.forEach((photo) => {
+    const src = normalizeDiaryPhoto(photo).src;
+    if (src.startsWith("blob:")) URL.revokeObjectURL(src);
+  });
   diaryDraft = {
     stageIndex: index,
     open: true,
@@ -1566,7 +1597,12 @@ function setDiaryMode(mode) {
 
 function openDiaryPhotoInput(mode) {
   diaryDraft.mode = mode;
-  const inputId = mode === "camera" ? "diaryCameraInput" : "diaryPhotosInput";
+  const inputId =
+    mode === "camera"
+      ? "diaryCameraInput"
+      : mode === "panorama"
+        ? "diaryPanoramaInput"
+        : "diaryPhotosInput";
   document.getElementById(inputId)?.click();
 }
 
@@ -1681,30 +1717,97 @@ async function updateDiaryEntry(stageIndex, entryId, value) {
   renderDiaryPanel();
 }
 
-function handleDiaryPhotos(input) {
+function loadDiaryImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Deze afbeelding kan niet worden gelezen."));
+    image.src = src;
+  });
+}
+
+function canvasToJpegBlob(canvas, quality = 0.88) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("De 360-foto kon niet worden verkleind."))),
+      "image/jpeg",
+      quality
+    );
+  });
+}
+
+async function prepareDiaryPhoto(file, projection = "flat") {
+  if (!file.type.startsWith("image/")) throw new Error(`${file.name} is geen afbeelding.`);
+  if (file.size > 45 * 1024 * 1024) throw new Error(`${file.name} is groter dan 45 MB.`);
+
+  let previewUrl = URL.createObjectURL(file);
+  let uploadFile = file;
+  let image;
+
+  try {
+    image = await loadDiaryImage(previewUrl);
+    const ratio = image.naturalWidth / Math.max(1, image.naturalHeight);
+    const isFullSphere = ratio >= 1.9 && ratio <= 2.1;
+
+    if (
+      projection === "equirectangular" &&
+      isFullSphere &&
+      (image.naturalWidth > 4096 || file.size > 6 * 1024 * 1024)
+    ) {
+      const width = Math.min(4096, image.naturalWidth);
+      const height = Math.round(width / 2);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Deze telefoon kan de 360-foto niet verkleinen.");
+      context.drawImage(image, 0, 0, width, height);
+      const optimizedBlob = await canvasToJpegBlob(canvas);
+      const baseName = file.name.replace(/\.[^.]+$/, "") || "panorama";
+      uploadFile = new File([optimizedBlob], `${baseName}-360.jpg`, {
+        type: "image/jpeg",
+        lastModified: file.lastModified || Date.now(),
+      });
+      URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(uploadFile);
+      image = await loadDiaryImage(previewUrl);
+    }
+
+    return {
+      src: previewUrl,
+      file: uploadFile,
+      caption: "",
+      takenAt: file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString(),
+      projection,
+      width: image.naturalWidth,
+      height: image.naturalHeight,
+    };
+  } catch (error) {
+    URL.revokeObjectURL(previewUrl);
+    throw error;
+  }
+}
+
+async function handleDiaryPhotos(input, projection = "flat") {
   const files = Array.from(input.files || []);
   if (!files.length) return;
 
-  Promise.all(
-    files.map(
-      (file) =>
-        new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () =>
-            resolve({
-              src: reader.result,
-              caption: "",
-              takenAt: file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString(),
-            });
-          reader.readAsDataURL(file);
-        })
-    )
-  ).then((photos) => {
-    diaryDraft.photos = diaryDraft.photos.concat(photos);
-    diaryDraft.status = `${photos.length} foto${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
+  diaryDraft.status = projection === "equirectangular" ? "360-foto wordt voorbereid..." : "Foto wordt voorbereid...";
   renderStages();
   renderDashboardOnly();
-  });
+
+  try {
+    const photos = await Promise.all(files.map((file) => prepareDiaryPhoto(file, projection)));
+    diaryDraft.photos = diaryDraft.photos.concat(photos);
+    const label = projection === "equirectangular" ? "360-foto" : "foto";
+    diaryDraft.status = `${photos.length} ${label}${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
+  } catch (error) {
+    diaryDraft.status = `Foto toevoegen lukte niet: ${error.message}`;
+  } finally {
+    input.value = "";
+    renderStages();
+    renderDashboardOnly();
+  }
 }
 
 function updateDiaryPhotoCaption(index, value) {
@@ -1713,7 +1816,75 @@ function updateDiaryPhotoCaption(index, value) {
   );
 }
 
+function toggleDiaryPhotoProjection(index) {
+  diaryDraft.photos = diaryDraft.photos.map((photo, photoIndex) => {
+    if (photoIndex !== index) return photo;
+    const item = normalizeDiaryPhoto(photo);
+    return {
+      ...item,
+      projection: item.projection === "equirectangular" ? "flat" : "equirectangular",
+    };
+  });
+  diaryDraft.status = isPanoramaPhoto(diaryDraft.photos[index])
+    ? "Foto wordt als interactieve 360-foto opgeslagen."
+    : "Foto wordt als gewone foto opgeslagen.";
+  renderStages();
+  renderDashboardOnly();
+}
+
+function openPanoramaFromButton(button) {
+  openPanorama(button.dataset.panoramaSrc || "", button.dataset.panoramaCaption || "");
+}
+
+function openPanorama(src, caption = "") {
+  const dialog = document.getElementById("panoramaDialog");
+  const container = document.getElementById("panoramaViewer");
+  const title = document.getElementById("panoramaTitle");
+  if (!dialog || !container || !src) return;
+
+  if (!window.pannellum) {
+    authMessage = "De 360-viewer kon niet worden geladen. Open de app opnieuw met internetverbinding.";
+    renderDiaryPanel();
+    return;
+  }
+
+  if (panoramaViewer?.destroy) panoramaViewer.destroy();
+  container.innerHTML = "";
+  if (title) title.textContent = caption || "360-foto";
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+
+  panoramaViewer = window.pannellum.viewer(container, {
+    type: "equirectangular",
+    panorama: src,
+    autoLoad: true,
+    showControls: true,
+    showFullscreenCtrl: true,
+    orientationOnByDefault: false,
+    title: caption || undefined,
+  });
+}
+
+function closePanorama() {
+  const dialog = document.getElementById("panoramaDialog");
+  if (panoramaViewer?.destroy) panoramaViewer.destroy();
+  panoramaViewer = null;
+  const container = document.getElementById("panoramaViewer");
+  if (container) container.innerHTML = "";
+  if (dialog?.open && typeof dialog.close === "function") dialog.close();
+  else dialog?.removeAttribute("open");
+}
+
+function closePanoramaFromBackdrop(event) {
+  if (event.target === event.currentTarget) closePanorama();
+}
+
 function removeDiaryPhoto(index) {
+  const src = normalizeDiaryPhoto(diaryDraft.photos[index]).src;
+  if (src.startsWith("blob:")) URL.revokeObjectURL(src);
   diaryDraft.photos = diaryDraft.photos.filter((_, photoIndex) => photoIndex !== index);
   diaryDraft.status = diaryDraft.photos.length ? "Foto verwijderd uit dit concept." : "";
   renderStages();
@@ -1737,6 +1908,12 @@ function getFileExtensionFromDataUrl(dataUrl, fallback = "bin") {
   return extension.replace(/[^a-z0-9]/gi, "") || fallback;
 }
 
+function getFileExtensionFromName(name, fallback = "bin") {
+  const extension = String(name || "").split(".").pop();
+  if (!extension || extension === name) return fallback;
+  return extension.replace(/[^a-z0-9]/gi, "").toLowerCase() || fallback;
+}
+
 async function uploadDiaryFiles(stageIndex, items, kind) {
   const bucket = kind === "audio" ? "diary-audio" : "diary-photos";
   const rows = [];
@@ -1747,10 +1924,15 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
     const dataUrl = kind === "photo" ? item.src : items[index];
     const caption = kind === "photo" ? item.caption.trim() : "";
     const takenAt = kind === "photo" && item.takenAt ? new Date(item.takenAt).toISOString() : "";
+    const projection = kind === "photo" ? item.projection : "flat";
     const fallbackExtension = kind === "audio" ? "webm" : "jpg";
-    const extension = getFileExtensionFromDataUrl(dataUrl, fallbackExtension);
-    const path = `${remoteTrip.id}/${stageIndex}/draft-${group}/${kind}-${index}.${extension}`;
-    const blob = dataUrlToBlob(dataUrl);
+    const blob = kind === "photo" && item.file ? item.file : dataUrlToBlob(dataUrl);
+    const extension =
+      kind === "photo" && item.file
+        ? getFileExtensionFromName(item.file.name, fallbackExtension)
+        : getFileExtensionFromDataUrl(dataUrl, fallbackExtension);
+    const panoramaSuffix = projection === "equirectangular" ? "-360" : "";
+    const path = `${remoteTrip.id}/${stageIndex}/draft-${group}/${kind}-${index}${panoramaSuffix}.${extension}`;
     const { error: uploadError } = await supabaseClient.storage.from(bucket).upload(path, blob, {
       contentType: blob.type || "application/octet-stream",
       upsert: false,
@@ -1763,6 +1945,7 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
       admin_only: kind === "audio",
       ...(caption ? { caption } : {}),
       ...(takenAt ? { taken_at: takenAt } : {}),
+      ...(kind === "photo" ? { projection } : {}),
     });
   }
 
@@ -1770,25 +1953,29 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
 }
 
 async function attachDiaryMedia(entryId, rows) {
-  if (rows.length) {
-    const { error } = await supabaseClient.from("diary_media").insert(
-      rows.map((row) => ({
-        ...row,
-        diary_entry_id: entryId,
-      }))
-    );
-    if (error && /caption|taken_at|column|schema cache/i.test(error.message || "")) {
-      const { error: fallbackError } = await supabaseClient.from("diary_media").insert(
-        rows.map(({ caption, taken_at, ...row }) => ({
-          ...row,
-          diary_entry_id: entryId,
-        }))
-      );
-      if (fallbackError) throw fallbackError;
-      authMessage = "Foto opgeslagen. Fototekst wordt centraal bewaard nadat de Supabase-migratie voor fototekst is uitgevoerd.";
-      return;
+  if (!rows.length) return;
+
+  let payload = rows.map((row) => ({ ...row, diary_entry_id: entryId }));
+  let result = await supabaseClient.from("diary_media").insert(payload);
+  let missingProjection = false;
+
+  if (result.error && /projection|schema cache/i.test(result.error.message || "")) {
+    missingProjection = true;
+    payload = payload.map(({ projection, ...row }) => row);
+    result = await supabaseClient.from("diary_media").insert(payload);
+  }
+
+  if (result.error && /caption|taken_at|column|schema cache/i.test(result.error.message || "")) {
+    payload = payload.map(({ caption, taken_at, ...row }) => row);
+    result = await supabaseClient.from("diary_media").insert(payload);
+    if (!result.error) {
+      authMessage = "Foto opgeslagen. Fototekst wordt centraal bewaard nadat de fotomigraties zijn uitgevoerd.";
     }
-    if (error) throw error;
+  }
+
+  if (result.error) throw result.error;
+  if (missingProjection) {
+    authMessage = "360-foto opgeslagen. Voer de 360-fotomigratie uit om de projectie ook in de database vast te leggen.";
   }
 }
 
@@ -1868,9 +2055,20 @@ async function saveDiaryDraft() {
     return;
   }
 
+  const localPhotos = await Promise.all(
+    diaryDraft.photos.map(async (photo) => {
+      const item = normalizeDiaryPhoto(photo);
+      return {
+        ...item,
+        src: item.file ? await blobToDataUrl(item.file) : item.src,
+        file: null,
+      };
+    })
+  );
+
   addDiaryEntry(diaryDraft.stageIndex, {
     note,
-    photos: diaryDraft.photos,
+    photos: localPhotos,
     audioData: diaryDraft.audioData,
     transcript,
   });
@@ -2072,7 +2270,8 @@ function renderDiaryComposer(stageIndex) {
         ${
           canAddDiaryMedia()
             ? `<button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="openDiaryPhotoInput('camera')">Foto maken</button>
-               <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>`
+               <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>
+               <button class="linkbtn panorama-select ${diaryDraft.mode === "panorama" ? "primary" : ""}" onclick="openDiaryPhotoInput('panorama')">360°-foto kiezen</button>`
             : ""
         }
         <button class="linkbtn ${diaryDraft.mode === "text" ? "primary" : ""}" onclick="setDiaryMode('text')">Tekst</button>
@@ -2081,6 +2280,7 @@ function renderDiaryComposer(stageIndex) {
 
       <input id="diaryCameraInput" class="diary-hidden-input" type="file" accept="image/*" capture="environment" onchange="handleDiaryPhotos(this)">
       <input id="diaryPhotosInput" class="diary-hidden-input" type="file" accept="image/*" multiple onchange="handleDiaryPhotos(this)">
+      <input id="diaryPanoramaInput" class="diary-hidden-input" type="file" accept="image/jpeg,image/png,image/webp" onchange="handleDiaryPhotos(this, 'equirectangular')">
 
       ${
         diaryDraft.mode === "text" || diaryDraft.mode === "voice"
@@ -2095,10 +2295,26 @@ function renderDiaryComposer(stageIndex) {
                 .map(
                   (photo, index) => {
                     const photoItem = normalizeDiaryPhoto(photo);
+                    const panorama = isPanoramaPhoto(photoItem);
                     return `
-                    <div class="diary-photo-draft">
-                      <img src="${photoItem.src}" alt="Dagboekfoto">
+                    <div class="diary-photo-draft ${panorama ? "panorama" : ""}">
+                      <div class="diary-photo-preview">
+                        <img src="${photoItem.src}" alt="${panorama ? "Voorbeeld van 360-foto" : "Dagboekfoto"}">
+                        ${panorama ? `
+                          <span class="panorama-badge">360°</span>
+                          <button
+                            class="panorama-preview-open"
+                            type="button"
+                            data-panorama-src="${escapeHtml(photoItem.src)}"
+                            data-panorama-caption="${escapeHtml(photoItem.caption)}"
+                            onclick="openPanoramaFromButton(this)"
+                          >360° bekijken</button>
+                        ` : ""}
+                      </div>
                       <textarea class="diary-photo-caption" oninput="updateDiaryPhotoCaption(${index}, this.value)" placeholder="Tekstje bij deze foto (optioneel). Typ, of gebruik de microfoon op je toetsenbord.">${escapeHtml(photoItem.caption)}</textarea>
+                      <button class="linkbtn" onclick="toggleDiaryPhotoProjection(${index})">
+                        ${panorama ? "Opslaan als gewone foto" : "Markeer als 360°-foto"}
+                      </button>
                       <button class="linkbtn stopbtn" onclick="removeDiaryPhoto(${index})">Verwijderen</button>
                     </div>
                   `;
@@ -3040,12 +3256,35 @@ function renderStageDots() {
   ).join("");
 }
 
+function renderDiaryPhotoVisual(photo, alt) {
+  const item = normalizeDiaryPhoto(photo);
+  if (!isPanoramaPhoto(item)) {
+    return `<img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}">`;
+  }
+
+  return `
+    <button
+      class="panorama-photo-open"
+      type="button"
+      data-panorama-src="${escapeHtml(item.src)}"
+      data-panorama-caption="${escapeHtml(item.caption)}"
+      onclick="openPanoramaFromButton(this)"
+      aria-label="Open 360-foto"
+    >
+      <img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}">
+      <span class="panorama-badge">360°</span>
+      <span class="panorama-open-label">Open 360°</span>
+    </button>
+  `;
+}
+
 
 function getAllDiaryPhotos() {
   return STAGES.flatMap((stage, stageIndex) =>
     getStageDiary(stageIndex).flatMap((entry) =>
       getDiaryPhotoItems(entry).map((photo) => ({
         photo: photo.src,
+        projection: photo.projection,
         stageIndex,
         stageTitle: stage.title,
         created: entry.created,
@@ -3095,7 +3334,14 @@ function renderTravelPhotoGallery() {
                 .map(
                   (item) => `
                     <figure class="travel-photo-item">
-                      <img src="${item.photo}" alt="Reisfoto van ${item.stageTitle}">
+                      ${renderDiaryPhotoVisual(
+                        {
+                          src: item.photo,
+                          caption: item.note,
+                          projection: item.projection,
+                        },
+                        `Reisfoto van ${item.stageTitle}`
+                      )}
                       <figcaption>
                         <b>${item.stageTitle}</b>
                         <span>${item.created}${item.author ? ` - ${item.author}` : ""}</span>
@@ -3138,7 +3384,7 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
               ${photoItems
                 .map((photo) => `
                   <figure class="diary-photo-saved">
-                    <img src="${photo.src}" alt="Dagboekfoto">
+                    ${renderDiaryPhotoVisual(photo, isPanoramaPhoto(photo) ? "360-dagboekfoto" : "Dagboekfoto")}
                     ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
                   </figure>
                 `)

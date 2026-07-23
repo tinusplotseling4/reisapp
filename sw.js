@@ -1,14 +1,16 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v59-day-list-top";
+const CACHE_NAME = "rondreis-noorwegen-2026-v60-panorama";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260723-day-list-top",
-  "./app.js?v=20260723-day-list-top",
+  "./style.css?v=20260723-panorama",
+  "./app.js?v=20260723-panorama",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260723-day-list-top",
+  "./data/stages.js?v=20260723-panorama",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
-  "./assets/images/icons/app-icon.svg"
+  "./assets/images/icons/app-icon.svg",
+  "./assets/vendor/pannellum/pannellum.css",
+  "./assets/vendor/pannellum/pannellum.js"
 ];
 
 self.addEventListener("install", (event) => {

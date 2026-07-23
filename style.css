@@ -1487,6 +1487,120 @@ button:hover,
   gap: 8px;
 }
 
+.diary-photo-preview,
+.panorama-photo-open {
+  position: relative;
+}
+
+.panorama-photo-open {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  background: #02070b;
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+}
+
+.panorama-photo-open:hover img,
+.panorama-photo-open:focus-visible img {
+  opacity: 0.82;
+}
+
+.panorama-badge {
+  position: absolute;
+  top: 9px;
+  left: 9px;
+  z-index: 2;
+  border-radius: 6px;
+  background: #02070b;
+  color: #fff;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  font-weight: 950;
+}
+
+.panorama-open-label,
+.panorama-preview-open {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  border-radius: 6px;
+  background: rgba(2, 7, 11, 0.88);
+  color: #fff;
+  padding: 7px 9px;
+  font-size: 0.8rem;
+  font-weight: 900;
+}
+
+.panorama-preview-open {
+  cursor: pointer;
+}
+
+.panorama-dialog {
+  width: min(1100px, calc(100vw - 28px));
+  max-width: none;
+  height: min(760px, calc(100vh - 28px));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #315f86;
+  border-radius: 8px;
+  background: #02070b;
+  color: #fff;
+}
+
+.panorama-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.88);
+}
+
+.panorama-dialog-shell {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+}
+
+.panorama-dialog-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: #07131c;
+}
+
+.panorama-dialog-head h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 1rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panorama-close {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 6px;
+  background: #b91c1c;
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.panorama-viewer {
+  width: 100%;
+  min-height: 0;
+  background: #000;
+}
+
 .diary-photo-grid img,
 .diary-photo-draft img {
   width: 100%;
@@ -1869,5 +1983,12 @@ input[type="checkbox"] {
 
   .stage-row-meta {
     font-size: 0.92rem;
+  }
+
+  .panorama-dialog {
+    width: 100vw;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
   }
 }

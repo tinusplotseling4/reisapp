@@ -47,6 +47,14 @@ Voor centrale foto/audio-opslag:
 
 Dit maakt de private buckets `diary-photos` en `diary-audio` en zet de juiste policies.
 
+Voor interactieve 360-foto's in het dagboek:
+
+1. Open de Supabase SQL editor.
+2. Plak de inhoud van `docs/supabase-migration-diary-360-photos.sql`.
+3. Voer het script uit.
+
+Dit voegt alleen de projectiesoort aan dagboekfoto's toe. Bestaande foto's blijven gewone foto's.
+
 ## 6. Testdata leegmaken
 
 Wil je de gedeelde reisdata schoonmaken zonder leden, rollen en uitnodigingslinks te verwijderen?
