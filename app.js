@@ -53,7 +53,11 @@ let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
 let viewRoleMode = localStorage.getItem("reisapp_view_role") || "";
 let adminMemberView = localStorage.getItem("reisapp_admin_member_view") || "all";
 let themeMode = localStorage.getItem("reisapp_theme") || "dark";
-let activeStage = Number(localStorage.getItem("reisapp_active_stage") || 0);
+const requestedDay = Number(new URLSearchParams(window.location.search).get("day"));
+let requestedDayPending = Number.isInteger(requestedDay) && requestedDay >= 1 && requestedDay <= STAGES.length;
+let activeStage = requestedDayPending
+  ? requestedDay - 1
+  : Number(localStorage.getItem("reisapp_active_stage") || 0);
 let driving = localStorage.getItem("reisapp_driving") === "true";
 let totalRouteMap;
 let totalRouteBounds;
@@ -1219,6 +1223,11 @@ function showTab(id) {
     initTotalRoute();
     renderTotalRouteHighlights();
   }
+  if (id === "days") {
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    });
+  }
   if (id === "map") initDashboardRoute();
   if (id === "weather") {
     renderWeatherPanel();
@@ -1361,6 +1370,14 @@ function selectStage(index) {
   localStorage.setItem("reisapp_active_stage", String(index));
   resetTotalRoute();
   render();
+}
+
+function getDayRouteUrl(index) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("day", String(index + 1));
+  url.hash = "selectedDayRoute";
+  return url.toString();
 }
 
 function openStage(index) {
@@ -3979,6 +3996,41 @@ async function openNearbyGroceryStores(stageIndex) {
   renderStages();
 }
 
+function renderDayRouteOverview() {
+  return `
+    <section class="day-routes-overview" aria-labelledby="dayRoutesTitle">
+      <div class="section-head day-routes-head">
+        <p class="eyebrow">Volledige reisplanning</p>
+        <h2 id="dayRoutesTitle">Alle dagroutes</h2>
+        <p class="muted">${STAGES.length} etappes van vertrek tot thuiskomst.</p>
+      </div>
+      <div class="day-route-list">
+        ${STAGES.map((stage, index) => {
+          const badge = getStageDateBadge(index);
+          const routeText = stage.route.join(" -> ");
+
+          return `
+            <article class="day-route-summary ${index === activeStage ? "selected" : ""}">
+              <span class="day-badge">${badge.top}<br>${badge.bottom}</span>
+              <div class="day-route-summary-main">
+                <h3>${stage.title}</h3>
+                <p class="day-route-summary-meta">${stage.km} - ${stage.time}</p>
+                <p class="day-route-points">${routeText}</p>
+              </div>
+              <div class="day-route-summary-actions">
+                <a class="linkbtn ${index === activeStage ? "primary" : ""}" target="_blank" rel="noopener" href="${getDayRouteUrl(index)}">
+                  Open dag
+                </a>
+                <a class="textlink" target="_blank" href="${stage.maps}">Google Maps</a>
+              </div>
+            </article>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
 function renderStages() {
   const stage = STAGES[activeStage];
   const diary = getStageDiary(activeStage);
@@ -3989,7 +4041,8 @@ function renderStages() {
   const navigationUrl = getGoogleNavigationUrl(stage);
 
   document.getElementById("stageList").innerHTML = `
-    <div class="card stage-detail">
+    ${renderDayRouteOverview()}
+    <div id="selectedDayRoute" class="card stage-detail">
       ${
         canControlRoute()
           ? `<button class="linkbtn stage-start-toggle ${driving ? "stopbtn" : "startbtn"}" onclick="toggleDriving('${navigationUrl}')">
@@ -4271,6 +4324,17 @@ function render() {
   renderLotte();
   renderAdminPanel();
   renderWeatherPanel();
+
+  if (requestedDayPending) {
+    requestedDayPending = false;
+    localStorage.setItem("reisapp_active_stage", String(activeStage));
+    showTab("days");
+    requestAnimationFrame(() => {
+      document.getElementById("selectedDayRoute")?.scrollIntoView({
+        block: "start",
+      });
+    });
+  }
 }
 
 window.addEventListener("beforeinstallprompt", (event) => {

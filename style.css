@@ -1012,6 +1012,61 @@ button:hover,
   gap: 12px;
 }
 
+.day-routes-overview {
+  margin-bottom: 18px;
+}
+
+.day-routes-head {
+  padding-bottom: 10px;
+}
+
+.day-route-list {
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.day-route-summary {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 126px;
+  gap: 14px;
+  align-items: start;
+  padding: 16px 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.day-route-summary.selected {
+  background: color-mix(in srgb, var(--light-blue) 12%, transparent);
+}
+
+.day-route-summary h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.day-route-summary-meta {
+  margin: 5px 0 0;
+  color: var(--gold);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.day-route-points {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.day-route-summary-actions {
+  display: grid;
+  gap: 9px;
+  justify-items: stretch;
+  text-align: center;
+}
+
+.day-route-summary-actions .linkbtn {
+  width: 100%;
+}
+
 .stage-start-toggle {
   width: 100%;
   min-height: 88px;
@@ -1039,6 +1094,18 @@ button:hover,
 .day-route-actions {
   justify-content: flex-start;
   margin-top: 14px;
+}
+
+@media (max-width: 680px) {
+  .day-route-summary {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+
+  .day-route-summary-actions {
+    grid-column: 2;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
 }
 
 .poi.visited,
