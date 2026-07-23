@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-<link rel="stylesheet" href="style.css?v=20260723-panorama">
+<link rel="stylesheet" href="style.css?v=20260723-diary-folders">
 </head>
 <body>
 <main class="app-shell">
@@ -111,12 +111,13 @@
   </div>
 </dialog>
 
-<script src="data/stages.js?v=20260723-panorama"></script>
+<script src="data/stages.js?v=20260723-diary-folders"></script>
 <script src="data/app-config.public.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="assets/vendor/pannellum/pannellum.js"></script>
-<script src="app.js?v=20260723-panorama"></script>
+<script src="assets/vendor/exifr/exifr-lite.umd.js"></script>
+<script src="app.js?v=20260723-diary-folders"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -127,7 +128,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260723-panorama").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260723-diary-folders").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

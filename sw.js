@@ -1,16 +1,17 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v60-panorama";
+const CACHE_NAME = "rondreis-noorwegen-2026-v61-diary-folders";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260723-panorama",
-  "./app.js?v=20260723-panorama",
+  "./style.css?v=20260723-diary-folders",
+  "./app.js?v=20260723-diary-folders",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260723-panorama",
+  "./data/stages.js?v=20260723-diary-folders",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg",
   "./assets/vendor/pannellum/pannellum.css",
-  "./assets/vendor/pannellum/pannellum.js"
+  "./assets/vendor/pannellum/pannellum.js",
+  "./assets/vendor/exifr/exifr-lite.umd.js"
 ];
 
 self.addEventListener("install", (event) => {

@@ -1411,13 +1411,11 @@ button:hover,
 
 .trip-diary-days {
   display: grid;
-  gap: 18px;
+  gap: 0;
 }
 
 .trip-diary-day {
-  display: grid;
-  gap: 10px;
-  padding: 0 0 16px;
+  padding: 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
@@ -1426,14 +1424,67 @@ button:hover,
 }
 
 .trip-diary-day-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 40px;
   gap: 12px;
   align-items: center;
+  padding: 14px 0;
+  cursor: pointer;
+  list-style: none;
 }
 
-.trip-diary-day-head h3,
-.trip-diary-day-head p {
+.trip-diary-day-head::-webkit-details-marker {
+  display: none;
+}
+
+.trip-diary-day-title {
+  display: grid;
+  gap: 4px;
+}
+
+.trip-diary-day-title b {
+  color: var(--text);
+}
+
+.trip-diary-day-title small {
+  color: var(--muted);
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.trip-diary-toggle {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text);
+  font-size: 1.35rem;
+  font-weight: 900;
+  transition: transform 160ms ease;
+}
+
+.trip-diary-day[open] .trip-diary-toggle {
+  transform: rotate(45deg);
+}
+
+.trip-diary-day-content {
+  padding: 0 0 18px 84px;
+}
+
+.diary-archive-upload {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  padding: 4px 0 8px;
+}
+
+.diary-archive-status {
   margin: 0;
+  color: var(--gold);
+  font-weight: 850;
 }
 
 .travel-photo-grid {
@@ -1630,6 +1681,10 @@ button:hover,
   color: var(--muted);
   font-weight: 800;
   line-height: 1.35;
+}
+
+.panorama-mark {
+  width: 100%;
 }
 
 .diary-entry {
@@ -1990,5 +2045,14 @@ input[type="checkbox"] {
     height: 100dvh;
     border: 0;
     border-radius: 0;
+  }
+
+  .trip-diary-day-head {
+    grid-template-columns: 64px minmax(0, 1fr) 36px;
+    gap: 9px;
+  }
+
+  .trip-diary-day-content {
+    padding-left: 0;
   }
 }

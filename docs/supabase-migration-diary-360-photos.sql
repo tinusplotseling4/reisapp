@@ -22,3 +22,24 @@ begin
   end if;
 end
 $$;
+
+drop policy if exists "active travelers can update diary media" on public.diary_media;
+create policy "active travelers can update diary media"
+on public.diary_media for update
+to authenticated
+using (
+  exists (
+    select 1
+    from public.diary_entries entry
+    where entry.id = diary_entry_id
+      and public.has_trip_role(entry.trip_id, array['admin', 'leader', 'traveler'])
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.diary_entries entry
+    where entry.id = diary_entry_id
+      and public.has_trip_role(entry.trip_id, array['admin', 'leader', 'traveler'])
+  )
+);

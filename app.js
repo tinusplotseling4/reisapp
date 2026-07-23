@@ -113,6 +113,11 @@ let diaryRecognition;
 let diaryCommentDrafts = {};
 let deferredInstallPrompt = null;
 let panoramaViewer = null;
+let diaryArchiveUploadState = {
+  loading: false,
+  message: "",
+};
+let openDiaryDays = new Set();
 
 function getConfig() {
   return window.REISAPP_CONFIG || {};
@@ -1481,6 +1486,8 @@ function getStageDiary(index) {
                     item.projection === "equirectangular" || /-360\.[a-z0-9]+$/i.test(item.storage_path || "")
                       ? "equirectangular"
                       : "flat",
+                  mediaId: item.id,
+                  storagePath: item.storage_path || "",
                 }
               : null
           )
@@ -1520,6 +1527,8 @@ function normalizeDiaryPhoto(photo) {
     file: photo?.file || null,
     width: Number(photo?.width || 0),
     height: Number(photo?.height || 0),
+    mediaId: photo?.mediaId || photo?.media_id || "",
+    storagePath: photo?.storagePath || photo?.storage_path || "",
   };
 }
 
@@ -1736,7 +1745,45 @@ function canvasToJpegBlob(canvas, quality = 0.88) {
   });
 }
 
-async function prepareDiaryPhoto(file, projection = "flat") {
+async function readDiaryPhotoTakenAt(file) {
+  if (window.exifr?.parse) {
+    try {
+      const metadata = await window.exifr.parse(file, [
+        "DateTimeOriginal",
+        "CreateDate",
+        "ModifyDate",
+      ]);
+      const capturedAt = metadata?.DateTimeOriginal || metadata?.CreateDate || metadata?.ModifyDate;
+      const capturedDate = capturedAt ? new Date(capturedAt) : null;
+      if (capturedDate && !Number.isNaN(capturedDate.getTime())) return capturedDate.toISOString();
+    } catch (_error) {
+      // Some exported images no longer contain EXIF data; the file date remains a useful fallback.
+    }
+  }
+
+  const fallbackDate = file.lastModified ? new Date(file.lastModified) : new Date();
+  return fallbackDate.toISOString();
+}
+
+function getTripDateKey(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Oslo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getStageIndexForPhotoDate(takenAt) {
+  const photoDateKey = getTripDateKey(takenAt);
+  return STAGES.findIndex((_, index) => getTripDateKey(getStageDate(index)) === photoDateKey);
+}
+
+async function prepareDiaryPhoto(file, projection = "flat", takenAt = "") {
   if (!file.type.startsWith("image/")) throw new Error(`${file.name} is geen afbeelding.`);
   if (file.size > 45 * 1024 * 1024) throw new Error(`${file.name} is groter dan 45 MB.`);
 
@@ -1777,7 +1824,7 @@ async function prepareDiaryPhoto(file, projection = "flat") {
       src: previewUrl,
       file: uploadFile,
       caption: "",
-      takenAt: file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString(),
+      takenAt: takenAt || (await readDiaryPhotoTakenAt(file)),
       projection,
       width: image.naturalWidth,
       height: image.naturalHeight,
@@ -1785,6 +1832,100 @@ async function prepareDiaryPhoto(file, projection = "flat") {
   } catch (error) {
     URL.revokeObjectURL(previewUrl);
     throw error;
+  }
+}
+
+async function handleDiaryArchivePhotos(input) {
+  if (!canAddDiaryMedia() || diaryArchiveUploadState.loading) return;
+  const files = Array.from(input.files || []);
+  if (!files.length) return;
+
+  diaryArchiveUploadState = {
+    loading: true,
+    message: `${files.length} foto${files.length === 1 ? "" : "'s"} worden op datum ingedeeld...`,
+  };
+  renderDiaryPanel();
+
+  const preparedPhotos = [];
+  const skippedFiles = [];
+
+  try {
+    for (const file of files) {
+      const takenAt = await readDiaryPhotoTakenAt(file);
+      const stageIndex = getStageIndexForPhotoDate(takenAt);
+      if (stageIndex < 0) {
+        skippedFiles.push(file.name);
+        continue;
+      }
+      const photo = await prepareDiaryPhoto(file, "flat", takenAt);
+      preparedPhotos.push({ stageIndex, photo });
+    }
+
+    if (!preparedPhotos.length) {
+      throw new Error("Geen foto heeft een datum binnen de 11 reisdagen.");
+    }
+
+    const groups = new Map();
+    preparedPhotos.forEach(({ stageIndex, photo }) => {
+      if (!groups.has(stageIndex)) groups.set(stageIndex, []);
+      groups.get(stageIndex).push(photo);
+    });
+
+    for (const [stageIndex, photos] of groups) {
+      if (isCloudMode() && remoteTrip && authUser) {
+        const mediaRows = await uploadDiaryFiles(stageIndex, photos, "photo");
+        const { data: entry, error } = await supabaseClient
+          .from("diary_entries")
+          .insert({
+            trip_id: remoteTrip.id,
+            stage_index: stageIndex,
+            user_id: authUser.id,
+            note: "",
+            transcript: "",
+          })
+          .select("*")
+          .single();
+        if (error) throw error;
+        await attachDiaryMedia(entry.id, mediaRows);
+      } else {
+        const localPhotos = await Promise.all(
+          photos.map(async (photo) => {
+            const item = normalizeDiaryPhoto(photo);
+            return {
+              ...item,
+              src: item.file ? await blobToDataUrl(item.file) : item.src,
+              file: null,
+            };
+          })
+        );
+        addDiaryEntry(stageIndex, { photos: localPhotos });
+      }
+    }
+
+    if (isCloudMode() && remoteTrip) await loadRemoteDiary();
+    const dayCount = groups.size;
+    diaryArchiveUploadState = {
+      loading: false,
+      message:
+        `${preparedPhotos.length} foto${preparedPhotos.length === 1 ? "" : "'s"} toegevoegd aan ${dayCount} ` +
+        `${dayCount === 1 ? "reisdag" : "reisdagen"}.` +
+        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen omdat de datum buiten de reis valt.` : ""),
+    };
+  } catch (error) {
+    if (isCloudMode() && remoteTrip) await loadRemoteDiary();
+    diaryArchiveUploadState = {
+      loading: false,
+      message: `Foto's toevoegen lukte niet: ${error.message}`,
+    };
+  } finally {
+    preparedPhotos.forEach(({ photo }) => {
+      const src = normalizeDiaryPhoto(photo).src;
+      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
+    });
+    input.value = "";
+    renderDiaryPanel();
+    renderStages();
+    renderDashboardOnly();
   }
 }
 
@@ -1830,6 +1971,59 @@ function toggleDiaryPhotoProjection(index) {
     : "Foto wordt als gewone foto opgeslagen.";
   renderStages();
   renderDashboardOnly();
+}
+
+async function setSavedDiaryPhotoProjection(stageIndex, entryId, mediaId, photoIndex, projection) {
+  if (!canAddDiaryMedia()) return;
+  const nextProjection = projection === "equirectangular" ? "equirectangular" : "flat";
+
+  if (isCloudMode() && remoteTrip && authUser && mediaId) {
+    const { error } = await supabaseClient
+      .from("diary_media")
+      .update({ projection: nextProjection })
+      .eq("id", mediaId);
+
+    if (error) {
+      authMessage = /projection|schema cache|policy|permission/i.test(error.message || "")
+        ? "360-markering is nog niet actief in Supabase. Voer de migratie voor bestaande 360-foto's uit."
+        : error.message;
+    } else {
+      authMessage =
+        nextProjection === "equirectangular"
+          ? "Foto wordt voortaan als interactieve 360-foto getoond."
+          : "Foto wordt voortaan als gewone foto getoond.";
+      await loadRemoteDiary();
+    }
+
+    renderStages();
+    renderDiaryPanel();
+    renderDashboardOnly();
+    return;
+  }
+
+  const entries = getStageDiary(stageIndex).map((entry) => {
+    if (String(entry.id) !== String(entryId)) return entry;
+    return {
+      ...entry,
+      photos: getDiaryPhotoItems(entry).map((photo, index) =>
+        index === photoIndex ? { ...photo, projection: nextProjection } : photo
+      ),
+    };
+  });
+  saveStageDiary(stageIndex, entries);
+  renderStages();
+  renderDiaryPanel();
+  renderDashboardOnly();
+}
+
+function setSavedDiaryPhotoProjectionFromButton(button) {
+  setSavedDiaryPhotoProjection(
+    Number(button.dataset.stageIndex),
+    button.dataset.entryId || "",
+    button.dataset.mediaId || "",
+    Number(button.dataset.photoIndex),
+    button.dataset.projection || "flat"
+  );
 }
 
 function openPanoramaFromButton(button) {
@@ -3382,10 +3576,26 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
         photoItems.length
           ? `<div class="diary-photo-grid saved">
               ${photoItems
-                .map((photo) => `
+                .map((photo, photoIndex) => `
                   <figure class="diary-photo-saved">
                     ${renderDiaryPhotoVisual(photo, isPanoramaPhoto(photo) ? "360-dagboekfoto" : "Dagboekfoto")}
                     ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
+                    ${
+                      canAddDiaryMedia()
+                        ? `<button
+                            class="linkbtn panorama-mark"
+                            type="button"
+                            data-stage-index="${stageIndex}"
+                            data-entry-id="${escapeHtml(String(entry.id))}"
+                            data-media-id="${escapeHtml(String(photo.mediaId || ""))}"
+                            data-photo-index="${photoIndex}"
+                            data-projection="${isPanoramaPhoto(photo) ? "flat" : "equirectangular"}"
+                            onclick="setSavedDiaryPhotoProjectionFromButton(this)"
+                          >
+                            ${isPanoramaPhoto(photo) ? "Toon als gewone foto" : "Markeer als 360°-foto"}
+                          </button>`
+                        : ""
+                    }
                   </figure>
                 `)
                 .join("")}
@@ -3436,8 +3646,6 @@ function renderDiaryPanel() {
   const panel = document.getElementById("diaryPanel");
   if (!panel) return;
 
-  const totalEntries = STAGES.reduce((total, _, index) => total + getStageDiary(index).length, 0);
-
   panel.innerHTML = `
     <section class="card trip-diary-panel">
       <div class="diary-head">
@@ -3448,33 +3656,65 @@ function renderDiaryPanel() {
         <button class="linkbtn" onclick="showTab('days')">Naar dagroutes</button>
       </div>
       ${
-        totalEntries
-          ? `<div class="trip-diary-days">
-              ${STAGES.map((stage, index) => {
-                const entries = getStageDiary(index);
-                const dateBadge = getStageDateBadge(index);
-                return `
-                  <section class="trip-diary-day">
-                    <div class="trip-diary-day-head">
-                      <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
-                      <div>
-                        <h3>${stage.title}</h3>
-                        <p class="muted">${getStageDateLabel(index)} - ${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</p>
-                      </div>
-                    </div>
-                    ${
-                      entries.length
-                        ? entries.map((entry) => renderDiaryEntryContent(entry, index, canEditDiary())).join("")
-                        : `<p class="muted">Nog geen dagboek voor deze dag.</p>`
-                    }
-                  </section>
-                `;
-              }).join("")}
+        canAddDiaryMedia()
+          ? `<div class="diary-archive-upload">
+              <button
+                class="linkbtn primary"
+                type="button"
+                onclick="document.getElementById('diaryArchivePhotosInput')?.click()"
+                ${diaryArchiveUploadState.loading ? "disabled" : ""}
+              >
+                ${diaryArchiveUploadState.loading ? "Foto's indelen..." : "Foto's op datum toevoegen"}
+              </button>
+              <input
+                id="diaryArchivePhotosInput"
+                class="diary-hidden-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onchange="handleDiaryArchivePhotos(this)"
+              >
+              ${diaryArchiveUploadState.message ? `<p class="diary-archive-status">${escapeHtml(diaryArchiveUploadState.message)}</p>` : ""}
             </div>`
-          : `<p class="muted">Nog geen dagboeknotities toegevoegd.</p>`
+          : ""
       }
+      <div class="trip-diary-days">
+        ${STAGES.map((stage, index) => {
+          const entries = getStageDiary(index);
+          const dateBadge = getStageDateBadge(index);
+          return `
+            <details
+              class="trip-diary-day"
+              ${openDiaryDays.has(index) ? "open" : ""}
+              ontoggle="setDiaryDayOpen(${index}, this.open)"
+            >
+              <summary class="trip-diary-day-head">
+                <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
+                <span class="trip-diary-day-title">
+                  <b>Dagboeknotities dag ${index + 1}</b>
+                  <small>${stage.title}</small>
+                  <small>${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</small>
+                </span>
+                <span class="trip-diary-toggle" aria-hidden="true">+</span>
+              </summary>
+              <div class="trip-diary-day-content">
+                ${
+                  entries.length
+                    ? entries.map((entry) => renderDiaryEntryContent(entry, index, canEditDiary())).join("")
+                    : `<p class="muted">Nog geen dagboek voor deze dag.</p>`
+                }
+              </div>
+            </details>
+          `;
+        }).join("")}
+      </div>
     </section>
   `;
+}
+
+function setDiaryDayOpen(index, open) {
+  if (open) openDiaryDays.add(index);
+  else openDiaryDays.delete(index);
 }
 
 function renderDashboard() {
