@@ -43,6 +43,7 @@ let remoteTrip = null;
 let remoteMembers = null;
 let remoteDiaryEntries = [];
 let remoteDiaryMedia = [];
+let remoteDiaryComments = [];
 let remoteGpsPoints = [];
 let remoteVisitedPois = [];
 let remoteVisitedPoisLoaded = false;
@@ -105,6 +106,7 @@ let diaryDraft = {
 let diaryRecorder;
 let diaryRecorderChunks = [];
 let diaryRecognition;
+let diaryCommentDrafts = {};
 let deferredInstallPrompt = null;
 
 function getConfig() {
@@ -946,11 +948,13 @@ async function loadRemoteDiary() {
     authMessage = entriesError.message;
     remoteDiaryEntries = [];
     remoteDiaryMedia = [];
+    remoteDiaryComments = [];
     return;
   }
 
   const entryIds = (entries || []).map((entry) => entry.id);
   let media = [];
+  let comments = [];
   if (entryIds.length) {
     let mediaResult = await supabaseClient
       .from("diary_media")
@@ -971,6 +975,22 @@ async function loadRemoteDiary() {
     } else {
       media = mediaResult.data || [];
     }
+
+    let commentsResult = await supabaseClient
+      .from("diary_comments")
+      .select("id, diary_entry_id, user_id, body, created_at")
+      .in("diary_entry_id", entryIds)
+      .order("created_at", { ascending: true });
+
+    if (commentsResult.error && /diary_comments|schema cache|does not exist|relation/i.test(commentsResult.error.message || "")) {
+      commentsResult = { data: [], error: null };
+    }
+
+    if (commentsResult.error) {
+      authMessage = commentsResult.error.message;
+    } else {
+      comments = commentsResult.data || [];
+    }
   }
 
   remoteDiaryMedia = await Promise.all(
@@ -982,6 +1002,7 @@ async function loadRemoteDiary() {
   );
 
   remoteDiaryEntries = entries || [];
+  remoteDiaryComments = comments;
 }
 
 async function loadRemoteGps() {
@@ -1401,6 +1422,20 @@ function getStageDiary(index) {
       .map((entry) => {
         const media = remoteDiaryMedia.filter((item) => item.diary_entry_id === entry.id);
         const photoMedia = media.filter((item) => item.kind === "photo");
+        const comments = remoteDiaryComments
+          .filter((comment) => comment.diary_entry_id === entry.id)
+          .map((comment) => ({
+            id: comment.id,
+            body: comment.body || "",
+            author: getMemberName(comment.user_id),
+            userId: comment.user_id,
+            created: new Date(comment.created_at).toLocaleString("nl-NL", {
+              day: "2-digit",
+              month: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          }));
         const photos = photoMedia
           .map((item) => item.url ? { src: item.url, caption: item.caption || "" } : null)
           .filter(Boolean);
@@ -1416,6 +1451,7 @@ function getStageDiary(index) {
           note: entry.note || "",
           transcript: entry.transcript || "",
           photos,
+          comments,
           photoIssueCount: photoMedia.length - photos.length,
           audioData: media.find((item) => item.kind === "audio")?.url || "",
           userId: entry.user_id,
@@ -1444,6 +1480,14 @@ function getDiaryPhotoCaption(photo) {
 
 function getDiaryPhotoItems(entry) {
   return (entry.photos || []).map(normalizeDiaryPhoto).filter((photo) => photo.src);
+}
+
+function getDiaryCommentKey(stageIndex, entryId) {
+  return `${stageIndex}:${entryId}`;
+}
+
+function getDiaryComments(entry) {
+  return entry.comments || [];
 }
 
 function saveStageDiary(index, entries) {
@@ -1505,10 +1549,78 @@ function addDiaryEntry(index, entry) {
     }),
     note: entry.note || "",
     photos: (entry.photos || []).map(normalizeDiaryPhoto),
+    comments: entry.comments || [],
     audioData: entry.audioData || "",
     transcript: entry.transcript || "",
   });
   saveStageDiary(index, entries);
+}
+
+function updateDiaryCommentDraft(key, value) {
+  diaryCommentDrafts[key] = value;
+}
+
+async function saveDiaryComment(stageIndex, entryId) {
+  if (!authUser && isCloudMode()) {
+    authMessage = "Log in om te reageren.";
+    renderStages();
+    renderDiaryPanel();
+    renderDashboardOnly();
+    return;
+  }
+
+  const key = getDiaryCommentKey(stageIndex, entryId);
+  const body = (diaryCommentDrafts[key] || "").trim();
+  if (!body) return;
+
+  if (isCloudMode() && remoteTrip && authUser) {
+    const { error } = await supabaseClient.from("diary_comments").insert({
+      diary_entry_id: entryId,
+      user_id: authUser.id,
+      body,
+    });
+
+    if (error) {
+      authMessage = /diary_comments|schema cache|does not exist|relation/i.test(error.message || "")
+        ? "Reacties zijn nog niet actief in Supabase. Draai eerst de diary_comments migratie."
+        : error.message;
+      renderStages();
+      renderDiaryPanel();
+      renderDashboardOnly();
+      return;
+    }
+
+    diaryCommentDrafts[key] = "";
+    await loadRemoteDiary();
+    renderStages();
+    renderDiaryPanel();
+    renderDashboardOnly();
+    return;
+  }
+
+  const entries = getStageDiary(stageIndex).map((entry) => {
+    if (String(entry.id) !== String(entryId)) return entry;
+    const comments = getDiaryComments(entry);
+    return {
+      ...entry,
+      comments: comments.concat({
+        id: Date.now(),
+        body,
+        author: getCurrentUser()?.name || "Reiziger",
+        created: new Date().toLocaleString("nl-NL", {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      }),
+    };
+  });
+  diaryCommentDrafts[key] = "";
+  saveStageDiary(stageIndex, entries);
+  renderStages();
+  renderDiaryPanel();
+  renderDashboardOnly();
 }
 
 async function updateDiaryEntry(stageIndex, entryId, value) {
@@ -1752,6 +1864,11 @@ function getTravelArchiveData() {
         note: entry.note || "",
         transcript: entry.transcript || "",
         photos: entry.photos || [],
+        comments: getDiaryComments(entry).map((comment) => ({
+          created: comment.created || "",
+          author: comment.author || "",
+          body: comment.body || "",
+        })),
         audio: canSeeAdminFiles() ? entry.audioData || "" : "",
       })),
     })),
@@ -2949,6 +3066,9 @@ function renderTravelPhotoGallery() {
 
 function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
   const photoItems = getDiaryPhotoItems(entry);
+  const comments = getDiaryComments(entry);
+  const commentKey = getDiaryCommentKey(stageIndex, entry.id);
+  const canComment = !isCloudMode() || Boolean(authUser);
   return `
     <div class="diary-entry">
       <span>${entry.created}${entry.author ? ` - ${entry.author}` : ""}</span>
@@ -2988,6 +3108,28 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
           : ""
       }
       ${entry.audioData && canSeeAdminFiles() ? `<audio class="diary-audio" controls src="${entry.audioData}"></audio>` : ""}
+      <div class="diary-comments">
+        ${comments.length ? `
+          <div class="diary-comment-list">
+            ${comments
+              .map((comment) => `
+                <article class="diary-comment">
+                  <span>${escapeHtml(comment.created || "")}${comment.author ? ` - ${escapeHtml(comment.author)}` : ""}</span>
+                  <p>${escapeHtml(comment.body || "")}</p>
+                </article>
+              `)
+              .join("")}
+          </div>
+        ` : `<p class="muted diary-comment-empty">Nog geen reacties.</p>`}
+        ${
+          canComment
+            ? `<div class="diary-comment-form">
+                <textarea oninput="updateDiaryCommentDraft(${JSON.stringify(commentKey)}, this.value)" placeholder="Reageer op deze herinnering... Typ, of gebruik de microfoon op je toetsenbord.">${escapeHtml(diaryCommentDrafts[commentKey] || "")}</textarea>
+                <button class="linkbtn" onclick="saveDiaryComment(${stageIndex}, ${JSON.stringify(String(entry.id))})">Reactie plaatsen</button>
+              </div>`
+            : `<p class="muted diary-comment-empty">Log in om te reageren.</p>`
+        }
+      </div>
     </div>
   `;
 }

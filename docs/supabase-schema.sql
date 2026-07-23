@@ -69,6 +69,15 @@ create table if not exists public.diary_media (
   kind text not null check (kind in ('photo', 'audio')),
   storage_path text not null,
   admin_only boolean not null default false,
+  caption text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.diary_comments (
+  id uuid primary key default gen_random_uuid(),
+  diary_entry_id uuid not null references public.diary_entries(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  body text not null check (length(trim(body)) > 0),
   created_at timestamptz not null default now()
 );
 
@@ -88,6 +97,7 @@ create index if not exists stage_progress_trip_id_idx on public.stage_progress(t
 create index if not exists visited_pois_trip_id_idx on public.visited_pois(trip_id);
 create index if not exists diary_entries_trip_id_idx on public.diary_entries(trip_id);
 create index if not exists diary_media_entry_id_idx on public.diary_media(diary_entry_id);
+create index if not exists diary_comments_entry_id_idx on public.diary_comments(diary_entry_id, created_at);
 create index if not exists gps_points_trip_recorded_idx on public.gps_points(trip_id, recorded_at);
 
 create or replace function public.is_trip_member(check_trip_id uuid)
@@ -160,6 +170,7 @@ alter table public.stage_progress enable row level security;
 alter table public.visited_pois enable row level security;
 alter table public.diary_entries enable row level security;
 alter table public.diary_media enable row level security;
+alter table public.diary_comments enable row level security;
 alter table public.gps_points enable row level security;
 
 create policy "profiles can read own profile"
@@ -307,6 +318,31 @@ with check (
     from public.diary_entries entry
     where entry.id = diary_entry_id
       and public.has_trip_role(entry.trip_id, array['admin', 'leader', 'traveler'])
+  )
+);
+
+create policy "members can read diary comments"
+on public.diary_comments for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.diary_entries entry
+    where entry.id = diary_entry_id
+      and public.is_trip_member(entry.trip_id)
+  )
+);
+
+create policy "members can create diary comments"
+on public.diary_comments for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1
+    from public.diary_entries entry
+    where entry.id = diary_entry_id
+      and public.is_trip_member(entry.trip_id)
   )
 );
 
