@@ -1514,17 +1514,20 @@ function openDiaryComposer(index) {
   if (!canEditDiary()) return;
   resetDiaryDraft(index);
   renderStages();
+  renderDashboardOnly();
 }
 
 function closeDiaryComposer() {
   if (diaryDraft.recording) stopDiaryRecording();
   diaryDraft.open = false;
   renderStages();
+  renderDashboardOnly();
 }
 
 function setDiaryMode(mode) {
   diaryDraft.mode = mode;
   renderStages();
+  renderDashboardOnly();
 }
 
 function openDiaryPhotoInput(mode) {
@@ -1661,6 +1664,7 @@ function handleDiaryPhotos(input) {
     diaryDraft.photos = diaryDraft.photos.concat(photos.map((photo) => ({ src: photo, caption: "" })));
     diaryDraft.status = `${photos.length} foto${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
   renderStages();
+  renderDashboardOnly();
   });
 }
 
@@ -1674,6 +1678,7 @@ function removeDiaryPhoto(index) {
   diaryDraft.photos = diaryDraft.photos.filter((_, photoIndex) => photoIndex !== index);
   diaryDraft.status = diaryDraft.photos.length ? "Foto verwijderd uit dit concept." : "";
   renderStages();
+  renderDashboardOnly();
 }
 
 function dataUrlToBlob(dataUrl) {
@@ -1831,6 +1836,7 @@ async function saveDiaryDraft() {
   resetDiaryDraft(diaryDraft.stageIndex);
   renderStages();
   renderDiaryPanel();
+  renderDashboardOnly();
 }
 
 function renderDashboardOnly() {
@@ -3262,7 +3268,14 @@ function renderDashboard() {
         <div class="actionbar">
           <a class="linkbtn primary" target="_blank" href="${stage.maps}">Open in Google Maps</a>
           <button class="linkbtn" onclick="openStage(${activeStage})">Open dagdetails</button>
+          ${
+            canEditDiary()
+              ? `<button class="linkbtn diary-add" onclick="openDiaryComposer(${activeStage})">Dagboeknotitie toevoegen</button>`
+              : ""
+          }
         </div>
+
+        ${renderDiaryComposer(activeStage)}
 
         <h3>Hoogtepunten onderweg</h3>
         ${stage.pois
