@@ -58,6 +58,7 @@ let requestedDayPending = Number.isInteger(requestedDay) && requestedDay >= 1 &&
 let activeStage = requestedDayPending
   ? requestedDay - 1
   : Number(localStorage.getItem("reisapp_active_stage") || 0);
+let tabHistory = [];
 let driving = localStorage.getItem("reisapp_driving") === "true";
 let totalRouteMap;
 let totalRouteBounds;
@@ -1218,36 +1219,91 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".app-header")) closeMainMenu();
 });
 
-function showTab(id) {
+function getAllowedTabId(id) {
+  if (isCloudMode() && !authUser) return "map";
+  if (id === "admin" && getActualRole() !== "admin") return "map";
+  if (id === "weather" && !canSeeWeatherTab()) return "days";
+  return document.getElementById(id)?.classList.contains("tab") ? id : "map";
+}
+
+function updatePageBackButtons() {
+  document.querySelectorAll(".page-back-button").forEach((button) => {
+    button.disabled = tabHistory.length === 0;
+  });
+}
+
+function showTab(id, options = {}) {
   closeMainMenu();
-  if (isCloudMode() && !authUser) {
-    id = "map";
+  const targetId = getAllowedTabId(id);
+  const activeTab = document.querySelector(".tab.active");
+
+  if (options.remember !== false && activeTab && activeTab.id !== targetId) {
+    tabHistory.push(activeTab.id);
+    tabHistory = tabHistory.slice(-20);
   }
-  if (id === "admin" && getActualRole() !== "admin") {
-    showTab("map");
-    return;
-  }
-  if (id === "weather" && !canSeeWeatherTab()) {
-    showTab("days");
-    return;
-  }
+
   document.querySelectorAll(".tab").forEach((tab) => tab.classList.remove("active"));
-  document.getElementById(id).classList.add("active");
-  if (id === "total") {
+  document.getElementById(targetId).classList.add("active");
+  updatePageBackButtons();
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  });
+
+  if (targetId === "total") {
     initTotalRoute();
     renderTotalRouteHighlights();
   }
-  if (id === "days") {
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: 0, behavior: "auto" });
-    });
-  }
-  if (id === "map") initDashboardRoute();
-  if (id === "weather") {
+  if (targetId === "map") initDashboardRoute();
+  if (targetId === "weather") {
     renderWeatherPanel();
     loadLiveWeather();
   }
-  if (id === "diary") renderDiaryPanel();
+  if (targetId === "diary") renderDiaryPanel();
+}
+
+function goBackTab() {
+  const previousTab = tabHistory.pop();
+  if (!previousTab) return;
+  showTab(previousTab, { remember: false });
+}
+
+function updateScrollTopButton() {
+  document.getElementById("scrollTopButton")?.classList.toggle("visible", window.scrollY > 300);
+}
+
+function scrollPageToTop() {
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function initPageNavigation() {
+  document.querySelectorAll(".tab").forEach((tab) => {
+    const navigation = document.createElement("div");
+    navigation.className = "page-navigation";
+    navigation.innerHTML = `
+      <button
+        class="page-back-button"
+        type="button"
+        title="Terug naar vorig tabblad"
+        aria-label="Terug naar vorig tabblad"
+        onclick="goBackTab()"
+      >&larr;</button>
+    `;
+    tab.prepend(navigation);
+  });
+
+  const scrollButton = document.createElement("button");
+  scrollButton.id = "scrollTopButton";
+  scrollButton.className = "scroll-top-button";
+  scrollButton.type = "button";
+  scrollButton.title = "Naar boven";
+  scrollButton.setAttribute("aria-label", "Naar boven");
+  scrollButton.innerHTML = "&uarr;";
+  scrollButton.addEventListener("click", scrollPageToTop);
+  document.body.append(scrollButton);
+
+  window.addEventListener("scroll", updateScrollTopButton, { passive: true });
+  updatePageBackButtons();
+  updateScrollTopButton();
 }
 
 function canControlRoute() {
@@ -4843,6 +4899,8 @@ function render() {
     });
   }
 }
+
+initPageNavigation();
 
 window.addEventListener("beforeinstallprompt", (event) => {
   event.preventDefault();

@@ -203,6 +203,50 @@ button:hover,
   display: block;
 }
 
+.page-navigation {
+  display: flex;
+  min-height: 40px;
+  margin: 0 0 10px;
+}
+
+.page-back-button,
+.scroll-top-button {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 8px;
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.page-back-button:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+
+.scroll-top-button {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 2500;
+  width: 44px;
+  height: 44px;
+  min-height: 44px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease, visibility 160ms ease;
+}
+
+.scroll-top-button.visible {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .section-head {
   margin: 4px 0 18px;
 }

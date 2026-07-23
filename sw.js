@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v62-dashboard-diary";
+const CACHE_NAME = "rondreis-noorwegen-2026-v63-page-navigation";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260723-dashboard-diary",
-  "./app.js?v=20260723-dashboard-diary",
+  "./style.css?v=20260723-page-navigation",
+  "./app.js?v=20260723-page-navigation",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260723-dashboard-diary",
+  "./data/stages.js?v=20260723-page-navigation",
   "./data/app-config.public.js",
   "./assets/images/scandinavia-map-hero.png",
   "./assets/images/icons/app-icon.svg",
