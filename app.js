@@ -53,10 +53,16 @@ let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
 let viewRoleMode = localStorage.getItem("reisapp_view_role") || "";
 let adminMemberView = localStorage.getItem("reisapp_admin_member_view") || "all";
 let themeMode = localStorage.getItem("reisapp_theme") || "dark";
-const requestedDay = Number(new URLSearchParams(window.location.search).get("day"));
+const initialUrlParams = new URLSearchParams(window.location.search);
+const requestedDay = Number(initialUrlParams.get("day"));
+const requestedComposeDay = Number(initialUrlParams.get("composeDay"));
 let requestedDayPending = Number.isInteger(requestedDay) && requestedDay >= 1 && requestedDay <= STAGES.length;
+let requestedComposeDayPending =
+  Number.isInteger(requestedComposeDay) && requestedComposeDay >= 1 && requestedComposeDay <= STAGES.length;
 let activeStage = requestedDayPending
   ? requestedDay - 1
+  : requestedComposeDayPending
+    ? requestedComposeDay - 1
   : Number(localStorage.getItem("reisapp_active_stage") || 0);
 let tabHistory = [];
 let driving = localStorage.getItem("reisapp_driving") === "true";
@@ -1455,6 +1461,20 @@ function openDayRoute(index) {
   if (dayWindow) dayWindow.opener = null;
 }
 
+function getDiaryComposerUrl(index) {
+  const url = new URL(window.location.href);
+  url.search = "";
+  url.searchParams.set("composeDay", String(index + 1));
+  url.hash = "diaryComposer";
+  return url.toString();
+}
+
+function openDiaryComposerTab(index) {
+  if (!canEditDiary()) return;
+  const diaryWindow = window.open(getDiaryComposerUrl(index), "_blank", "noopener");
+  if (diaryWindow) diaryWindow.opener = null;
+}
+
 function openStage(index) {
   activeStage = index;
   localStorage.setItem("reisapp_active_stage", String(index));
@@ -1645,22 +1665,14 @@ function resetDiaryDraft(index = activeStage) {
   };
 }
 
-function openDiaryComposer(index) {
-  if (!canEditDiary()) return;
-  resetDiaryDraft(index);
-  renderStages();
-  renderDashboardOnly();
-  requestAnimationFrame(() => {
-    document.querySelector(".tab.active .diary-composer")?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  });
-}
-
 function closeDiaryComposer() {
   if (diaryDraft.recording) stopDiaryRecording();
   diaryDraft.open = false;
+  if (document.getElementById("compose")?.classList.contains("active")) {
+    window.close();
+    renderDiaryComposerPage();
+    return;
+  }
   renderStages();
   renderDashboardOnly();
 }
@@ -1704,6 +1716,18 @@ function addDiaryEntry(index, entry) {
   });
   saveStageDiary(index, entries);
 }
+
+function notifyDiarySaved() {
+  localStorage.setItem("reisapp_diary_sync", String(Date.now()));
+}
+
+window.addEventListener("storage", async (event) => {
+  if (event.key !== "reisapp_diary_sync") return;
+  if (isCloudMode() && remoteTrip && authUser) await loadRemoteDiary();
+  renderStages();
+  renderDiaryPanel();
+  renderDashboardOnly();
+});
 
 function updateDiaryCommentDraft(key, value) {
   diaryCommentDrafts[key] = value;
@@ -2310,7 +2334,9 @@ async function saveDiaryDraft() {
 
     await loadRemoteDiary();
     resetDiaryDraft(diaryDraft.stageIndex);
-  renderStages();
+    diaryDraft.status = "Dagboeknotitie opgeslagen.";
+    notifyDiarySaved();
+    renderStages();
     renderDiaryPanel();
     renderDashboardOnly();
     return;
@@ -2334,6 +2360,8 @@ async function saveDiaryDraft() {
     transcript,
   });
   resetDiaryDraft(diaryDraft.stageIndex);
+  diaryDraft.status = "Dagboeknotitie opgeslagen.";
+  notifyDiarySaved();
   renderStages();
   renderDiaryPanel();
   renderDashboardOnly();
@@ -3539,6 +3567,43 @@ function renderDiaryPhotoVisual(photo, alt) {
   `;
 }
 
+function renderDiaryComposerPage() {
+  const panel = document.getElementById("diaryComposePanel");
+  if (!panel) return;
+
+  if (!canEditDiary()) {
+    panel.innerHTML = `
+      <section class="diary-compose-page">
+        <p class="eyebrow">Dagboek</p>
+        <h2>Geen toegang</h2>
+        <p class="muted">Alleen mensen die meereizen kunnen dagboekherinneringen toevoegen.</p>
+      </section>
+    `;
+    return;
+  }
+
+  const stageIndex = diaryDraft.stageIndex ?? activeStage;
+  const stage = STAGES[stageIndex];
+  const badge = getStageDateBadge(stageIndex);
+  panel.innerHTML = `
+    <section id="diaryComposer" class="diary-compose-page">
+      <header class="diary-compose-page-head">
+        <span class="day-badge large">${badge.top}<br>${badge.bottom}</span>
+        <div>
+          <p class="eyebrow">Dagboekherinnering toevoegen</p>
+          <h2>Dag ${stageIndex + 1}: ${stage.title}</h2>
+          <p class="muted">${stage.from} -> ${stage.to}</p>
+        </div>
+      </header>
+      ${
+        diaryDraft.open
+          ? renderDiaryComposer(stageIndex)
+          : `<p class="diary-compose-closed">Het formulier is gesloten. Je kunt dit tabblad nu sluiten.</p>`
+      }
+    </section>
+  `;
+}
+
 
 function getAllDiaryPhotos() {
   return STAGES.flatMap((stage, stageIndex) =>
@@ -3790,7 +3855,7 @@ function renderDashboard() {
     ${
       canEditDiary()
         ? `<div class="dashboard-top-actions">
-            <button class="linkbtn primary diary-add" onclick="openDiaryComposer(${activeStage})">
+            <button class="linkbtn primary diary-add" onclick="openDiaryComposerTab(${activeStage})">
               Dagboekherinnering toevoegen
             </button>
           </div>`
@@ -3879,12 +3944,10 @@ function renderDashboard() {
           <button class="linkbtn" onclick="openStage(${activeStage})">Open dagdetails</button>
           ${
             canEditDiary()
-              ? `<button class="linkbtn diary-add" onclick="openDiaryComposer(${activeStage})">Dagboeknotitie toevoegen</button>`
+              ? `<button class="linkbtn diary-add" onclick="openDiaryComposerTab(${activeStage})">Dagboeknotitie toevoegen</button>`
               : ""
           }
         </div>
-
-        ${renderDiaryComposer(activeStage)}
 
         <h3>Hoogtepunten onderweg</h3>
         ${stage.pois
@@ -4637,11 +4700,10 @@ function renderStages() {
             <h3>Dagboek</h3>
             ${
               canEditDiary()
-                ? `<button class="linkbtn primary diary-add" onclick="openDiaryComposer(${activeStage})">Dagboeknotitie toevoegen</button>`
+                ? `<button class="linkbtn primary diary-add" onclick="openDiaryComposerTab(${activeStage})">Dagboeknotitie toevoegen</button>`
                 : ""
             }
           </div>
-          ${renderDiaryComposer(activeStage)}
           ${
             canEditDiary()
               ? `<p class="muted">Alle eerdere herinneringen staan gebundeld in het dagboek.</p>
@@ -4721,6 +4783,7 @@ function renderStages() {
       </div>
     </div>
   `;
+  renderDiaryComposerPage();
 }
 
 function toggleLotteOpen(index) {
@@ -4864,6 +4927,7 @@ function render() {
   renderNavigationForRole();
   if (!authReady) {
     document.getElementById("summary").innerHTML = `<section class="auth-gate"><p class="muted">App wordt geladen...</p></section>`;
+    document.getElementById("diaryComposePanel").innerHTML = `<section class="auth-gate"><p class="muted">Dagboek wordt geladen...</p></section>`;
     return;
   }
 
@@ -4874,6 +4938,7 @@ function render() {
     document.getElementById("adminPanel").innerHTML = "";
     document.getElementById("weatherPanel").innerHTML = "";
     document.getElementById("diaryPanel").innerHTML = "";
+    document.getElementById("diaryComposePanel").innerHTML = "";
     document.getElementById("daysWeatherSummary").innerHTML = "";
     return;
   }
@@ -4887,6 +4952,15 @@ function render() {
   renderLotte();
   renderAdminPanel();
   renderWeatherPanel();
+  renderDiaryComposerPage();
+
+  if (requestedComposeDayPending) {
+    requestedComposeDayPending = false;
+    localStorage.setItem("reisapp_active_stage", String(activeStage));
+    resetDiaryDraft(activeStage);
+    renderDiaryComposerPage();
+    showTab("compose");
+  }
 
   if (requestedDayPending) {
     requestedDayPending = false;

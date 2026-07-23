@@ -1405,6 +1405,43 @@ button:hover,
   padding: 12px 0;
 }
 
+.diary-compose-page {
+  width: min(100%, 760px);
+  margin: 0 auto;
+  padding: 8px 0 48px;
+}
+
+.diary-compose-page-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 0 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.diary-compose-page-head h2,
+.diary-compose-page-head p {
+  margin-top: 0;
+}
+
+.diary-compose-page-head > div {
+  min-width: 0;
+}
+
+.diary-compose-page-head h2 {
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.diary-compose-page-head p:last-child {
+  margin-bottom: 0;
+}
+
+.diary-compose-closed {
+  margin-top: 20px;
+  color: var(--muted);
+}
+
 .diary-options,
 .diary-compose-actions,
 .voice-tools {
@@ -2024,6 +2061,10 @@ input[type="checkbox"] {
 
   .dashboard-top-actions .linkbtn {
     width: 100%;
+  }
+
+  .diary-compose-page-head {
+    align-items: flex-start;
   }
 
   .trip-hero {
