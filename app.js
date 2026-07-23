@@ -958,9 +958,17 @@ async function loadRemoteDiary() {
   if (entryIds.length) {
     let mediaResult = await supabaseClient
       .from("diary_media")
-      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, created_at")
+      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, created_at")
       .in("diary_entry_id", entryIds)
       .order("created_at", { ascending: true });
+
+    if (mediaResult.error && /caption|taken_at|column|schema cache/i.test(mediaResult.error.message || "")) {
+      mediaResult = await supabaseClient
+        .from("diary_media")
+        .select("id, diary_entry_id, kind, storage_path, admin_only, caption, created_at")
+        .in("diary_entry_id", entryIds)
+        .order("created_at", { ascending: true });
+    }
 
     if (mediaResult.error && /caption|column|schema cache/i.test(mediaResult.error.message || "")) {
       mediaResult = await supabaseClient
@@ -1437,7 +1445,11 @@ function getStageDiary(index) {
             }),
           }));
         const photos = photoMedia
-          .map((item) => item.url ? { src: item.url, caption: item.caption || "" } : null)
+          .map((item) =>
+            item.url
+              ? { src: item.url, caption: item.caption || "", takenAt: item.taken_at || item.created_at || "" }
+              : null
+          )
           .filter(Boolean);
         return {
           id: entry.id,
@@ -1463,10 +1475,11 @@ function getStageDiary(index) {
 }
 
 function normalizeDiaryPhoto(photo) {
-  if (typeof photo === "string") return { src: photo, caption: "" };
+  if (typeof photo === "string") return { src: photo, caption: "", takenAt: "" };
   return {
     src: photo?.src || photo?.url || "",
     caption: photo?.caption || "",
+    takenAt: photo?.takenAt || photo?.taken_at || "",
   };
 }
 
@@ -1476,6 +1489,10 @@ function getDiaryPhotoSrc(photo) {
 
 function getDiaryPhotoCaption(photo) {
   return normalizeDiaryPhoto(photo).caption;
+}
+
+function getDiaryPhotoTakenAt(photo) {
+  return normalizeDiaryPhoto(photo).takenAt;
 }
 
 function getDiaryPhotoItems(entry) {
@@ -1656,12 +1673,17 @@ function handleDiaryPhotos(input) {
       (file) =>
         new Promise((resolve) => {
           const reader = new FileReader();
-          reader.onload = () => resolve(reader.result);
+          reader.onload = () =>
+            resolve({
+              src: reader.result,
+              caption: "",
+              takenAt: file.lastModified ? new Date(file.lastModified).toISOString() : new Date().toISOString(),
+            });
           reader.readAsDataURL(file);
         })
     )
   ).then((photos) => {
-    diaryDraft.photos = diaryDraft.photos.concat(photos.map((photo) => ({ src: photo, caption: "" })));
+    diaryDraft.photos = diaryDraft.photos.concat(photos);
     diaryDraft.status = `${photos.length} foto${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
   renderStages();
   renderDashboardOnly();
@@ -1707,6 +1729,7 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
     const item = normalizeDiaryPhoto(items[index]);
     const dataUrl = kind === "photo" ? item.src : items[index];
     const caption = kind === "photo" ? item.caption.trim() : "";
+    const takenAt = kind === "photo" && item.takenAt ? new Date(item.takenAt).toISOString() : "";
     const fallbackExtension = kind === "audio" ? "webm" : "jpg";
     const extension = getFileExtensionFromDataUrl(dataUrl, fallbackExtension);
     const path = `${remoteTrip.id}/${stageIndex}/draft-${group}/${kind}-${index}.${extension}`;
@@ -1722,6 +1745,7 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
       storage_path: path,
       admin_only: kind === "audio",
       ...(caption ? { caption } : {}),
+      ...(takenAt ? { taken_at: takenAt } : {}),
     });
   }
 
@@ -1736,9 +1760,9 @@ async function attachDiaryMedia(entryId, rows) {
         diary_entry_id: entryId,
       }))
     );
-    if (error && /caption|column|schema cache/i.test(error.message || "")) {
+    if (error && /caption|taken_at|column|schema cache/i.test(error.message || "")) {
       const { error: fallbackError } = await supabaseClient.from("diary_media").insert(
-        rows.map(({ caption, ...row }) => ({
+        rows.map(({ caption, taken_at, ...row }) => ({
           ...row,
           diary_entry_id: entryId,
         }))
@@ -3008,11 +3032,16 @@ function getAllDiaryPhotos() {
         stageIndex,
         stageTitle: stage.title,
         created: entry.created,
+        takenAt: getDiaryPhotoTakenAt(photo) || "",
         author: entry.author || "Reiziger",
         note: photo.caption || entry.note || entry.transcript || "",
       }))
     )
-  );
+  ).sort((left, right) => {
+    const leftTime = Date.parse(left.takenAt || left.created || "") || 0;
+    const rightTime = Date.parse(right.takenAt || right.created || "") || 0;
+    return rightTime - leftTime;
+  });
 }
 
 function getDiaryPhotoIssueCount() {

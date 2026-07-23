@@ -70,6 +70,7 @@ create table if not exists public.diary_media (
   storage_path text not null,
   admin_only boolean not null default false,
   caption text,
+  taken_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -97,6 +98,7 @@ create index if not exists stage_progress_trip_id_idx on public.stage_progress(t
 create index if not exists visited_pois_trip_id_idx on public.visited_pois(trip_id);
 create index if not exists diary_entries_trip_id_idx on public.diary_entries(trip_id);
 create index if not exists diary_media_entry_id_idx on public.diary_media(diary_entry_id);
+create index if not exists diary_media_taken_at_idx on public.diary_media(taken_at);
 create index if not exists diary_comments_entry_id_idx on public.diary_comments(diary_entry_id, created_at);
 create index if not exists gps_points_trip_recorded_idx on public.gps_points(trip_id, recorded_at);
 
