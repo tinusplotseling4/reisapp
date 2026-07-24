@@ -44,6 +44,12 @@ let remoteMembers = null;
 let remoteDiaryEntries = [];
 let remoteDiaryMedia = [];
 let remoteDiaryComments = [];
+let photoCommentNotificationState = {
+  count: 0,
+  latestAt: "",
+  initialized: false,
+};
+let diaryNotificationTimer = null;
 let remoteGpsPoints = [];
 let remoteVisitedPois = [];
 let remoteVisitedPoisLoaded = false;
@@ -66,6 +72,7 @@ const initialUrlParams = new URLSearchParams(window.location.search);
 const requestedDay = Number(initialUrlParams.get("day"));
 const requestedComposeDay = Number(initialUrlParams.get("composeDay"));
 const requestedComposeDate = initialUrlParams.get("composeDate") || "";
+let requestedDiaryPending = initialUrlParams.get("openDiary") === "1";
 let requestedDayPending = Number.isInteger(requestedDay) && requestedDay >= 1 && requestedDay <= STAGES.length;
 let requestedComposeDayPending =
   Number.isInteger(requestedComposeDay) && requestedComposeDay >= 1 && requestedComposeDay <= STAGES.length;
@@ -713,13 +720,16 @@ async function initAuth() {
     if (authUser) {
       await loadRemoteState();
       startSharedGpsRefresh();
+      startDiaryNotificationRefresh();
     } else {
       remoteTrip = null;
       remoteMembers = null;
       remoteGpsPoints = [];
       remoteVisitedPois = [];
       remoteVisitedPoisLoaded = false;
+      photoCommentNotificationState = { count: 0, latestAt: "", initialized: false };
       stopSharedGpsRefresh();
+      stopDiaryNotificationRefresh();
       render();
     }
   });
@@ -727,6 +737,7 @@ async function initAuth() {
   if (authUser) {
     await loadRemoteState();
     startSharedGpsRefresh();
+    startDiaryNotificationRefresh();
   }
   authReady = true;
   render();
@@ -1064,6 +1075,155 @@ async function loadRemoteDiary() {
 
   remoteDiaryEntries = entries || [];
   remoteDiaryComments = comments;
+  refreshPhotoCommentNotificationState();
+}
+
+function canReceivePhotoCommentNotifications() {
+  const role = getActualRole();
+  return role === "admin" || role === "leader" || role === "traveler";
+}
+
+function getPhotoCommentSeenKey() {
+  if (!remoteTrip || !authUser) return "";
+  return `reisapp_photo_comment_seen_${remoteTrip.id}_${authUser.id}`;
+}
+
+function getUnreadPhotoComments() {
+  if (!canReceivePhotoCommentNotifications() || !authUser) return [];
+  const seenAt = localStorage.getItem(getPhotoCommentSeenKey()) || "";
+  const photoEntryIds = new Set(
+    remoteDiaryMedia
+      .filter((item) => item.kind === "photo")
+      .map((item) => String(item.diary_entry_id))
+  );
+
+  return remoteDiaryComments.filter(
+    (comment) =>
+      comment.user_id !== authUser.id &&
+      photoEntryIds.has(String(comment.diary_entry_id)) &&
+      (!seenAt || new Date(comment.created_at).getTime() > new Date(seenAt).getTime())
+  );
+}
+
+function updatePhotoCommentNotificationUi() {
+  const badge = document.getElementById("diaryNotificationBadge");
+  if (badge) {
+    badge.hidden = photoCommentNotificationState.count === 0;
+    badge.textContent = String(photoCommentNotificationState.count);
+  }
+
+  const slot = document.getElementById("photoCommentNotificationSlot");
+  if (slot) slot.innerHTML = renderPhotoCommentNotificationArea();
+}
+
+async function showPhotoCommentDeviceNotification(count) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const title = count === 1 ? "Nieuwe reactie op een reisfoto" : `${count} nieuwe reacties op reisfoto's`;
+  const options = {
+    body: "Open het dagboek om de reactie te bekijken.",
+    tag: "reisapp-photo-comments",
+    renotify: true,
+    data: { url: "./?openDiary=1" },
+  };
+
+  if ("serviceWorker" in navigator) {
+    const registration = await navigator.serviceWorker.ready;
+    await registration.showNotification(title, options);
+  } else {
+    new Notification(title, options);
+  }
+}
+
+function refreshPhotoCommentNotificationState(announce = true) {
+  const key = getPhotoCommentSeenKey();
+  if (!key || !canReceivePhotoCommentNotifications()) {
+    photoCommentNotificationState = { count: 0, latestAt: "", initialized: true };
+    updatePhotoCommentNotificationUi();
+    return;
+  }
+
+  if (!localStorage.getItem(key)) {
+    localStorage.setItem(key, new Date().toISOString());
+    photoCommentNotificationState = { count: 0, latestAt: "", initialized: true };
+    updatePhotoCommentNotificationUi();
+    return;
+  }
+
+  const unread = getUnreadPhotoComments();
+  const latestAt = unread.reduce(
+    (latest, comment) =>
+      new Date(comment.created_at).getTime() > new Date(latest || 0).getTime()
+        ? comment.created_at
+        : latest,
+    ""
+  );
+  const previousCount = photoCommentNotificationState.count;
+  photoCommentNotificationState = {
+    count: unread.length,
+    latestAt,
+    initialized: true,
+  };
+  updatePhotoCommentNotificationUi();
+
+  if (announce && unread.length > previousCount) {
+    showPhotoCommentDeviceNotification(unread.length).catch(() => {});
+  }
+}
+
+function markPhotoCommentsSeen() {
+  const key = getPhotoCommentSeenKey();
+  if (key) localStorage.setItem(key, new Date().toISOString());
+  photoCommentNotificationState = { count: 0, latestAt: "", initialized: true };
+  updatePhotoCommentNotificationUi();
+}
+
+async function enablePhotoCommentNotifications() {
+  if (!("Notification" in window)) return;
+  await Notification.requestPermission();
+  updatePhotoCommentNotificationUi();
+}
+
+function renderPhotoCommentNotificationArea() {
+  if (!isCloudMode() || !authUser || !remoteTrip || !canReceivePhotoCommentNotifications()) return "";
+  const notificationButton =
+    "Notification" in window && Notification.permission === "default"
+      ? `<button class="linkbtn notification-enable" onclick="enablePhotoCommentNotifications()">Meldingen inschakelen</button>`
+      : "";
+
+  if (!photoCommentNotificationState.count) {
+    return notificationButton
+      ? `<div class="notification-permission">${notificationButton}</div>`
+      : "";
+  }
+
+  const count = photoCommentNotificationState.count;
+  return `
+    <section class="photo-comment-alert" role="status">
+      <div>
+        <b>${count} nieuwe ${count === 1 ? "reactie" : "reacties"} op ${count === 1 ? "een reisfoto" : "reisfoto's"}</b>
+        <span>Open het dagboek om ${count === 1 ? "de reactie" : "ze"} te bekijken.</span>
+      </div>
+      <button class="linkbtn primary" onclick="showTab('diary')">Bekijken</button>
+    </section>
+    ${notificationButton ? `<div class="notification-permission">${notificationButton}</div>` : ""}
+  `;
+}
+
+async function refreshDiaryNotifications() {
+  if (!isCloudMode() || !authUser || !remoteTrip || document.hidden || !navigator.onLine) return;
+  await loadRemoteDiary();
+  if (document.getElementById("diary")?.classList.contains("active")) renderDiaryPanel();
+}
+
+function startDiaryNotificationRefresh() {
+  if (diaryNotificationTimer) clearInterval(diaryNotificationTimer);
+  diaryNotificationTimer = setInterval(refreshDiaryNotifications, 60000);
+}
+
+function stopDiaryNotificationRefresh() {
+  if (!diaryNotificationTimer) return;
+  clearInterval(diaryNotificationTimer);
+  diaryNotificationTimer = null;
 }
 
 async function loadRemoteGps() {
@@ -1292,7 +1452,13 @@ function showTab(id, options = {}) {
     renderWeatherPanel();
     loadLiveWeather();
   }
-  if (targetId === "diary") renderDiaryPanel();
+  if (targetId === "diary") {
+    markPhotoCommentsSeen();
+    renderDiaryPanel();
+    if (isCloudMode() && authUser && remoteTrip) {
+      loadRemoteDiary().then(() => renderDiaryPanel());
+    }
+  }
 }
 
 function goBackTab() {
@@ -2857,6 +3023,7 @@ function renderNavigationForRole() {
       </div>
     `;
   }
+  updatePhotoCommentNotificationUi();
 }
 
 function getVisitedCount() {
@@ -3972,6 +4139,10 @@ function setDiaryDayOpen(dateKey, open) {
 function renderDashboard() {
   const stage = STAGES[activeStage];
   return `
+    <div id="photoCommentNotificationSlot">
+      ${renderPhotoCommentNotificationArea()}
+    </div>
+
     ${
       canEditDiary()
         ? `<div class="dashboard-top-actions">
@@ -5453,6 +5624,11 @@ function render() {
       });
     });
   }
+
+  if (requestedDiaryPending) {
+    requestedDiaryPending = false;
+    showTab("diary");
+  }
 }
 
 initPageNavigation();
@@ -5462,6 +5638,16 @@ window.addEventListener("beforeinstallprompt", (event) => {
   deferredInstallPrompt = event;
   render();
 });
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) refreshDiaryNotifications();
+});
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "OPEN_DIARY") showTab("diary");
+  });
+}
 
 initAuth();
 if (driving) startLocationTracking();

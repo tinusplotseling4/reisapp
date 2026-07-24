@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-<link rel="stylesheet" href="style.css?v=20260724-flicker-fix">
+<link rel="stylesheet" href="style.css?v=20260724-photo-comment-alerts">
 </head>
 <body>
 <main class="app-shell">
@@ -31,7 +31,10 @@
         <button onclick="showTab('map')">Dashboard</button>
         <button onclick="openTotalRoute()">Totaalroute</button>
         <button onclick="showTab('days')">Dagroutes</button>
-        <button onclick="showTab('diary')">Dagboek</button>
+        <button id="diaryNavButton" onclick="showTab('diary')">
+          Dagboek
+          <span id="diaryNotificationBadge" class="nav-notification-badge" hidden></span>
+        </button>
         <button onclick="showTab('lotte')">Lotte</button>
         <button id="weatherNavButton" onclick="showTab('weather')">Weer</button>
         <button id="adminNavButton" onclick="showTab('admin')">Beheer</button>
@@ -121,11 +124,11 @@
 <script src="assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline"></script>
 <script src="assets/vendor/pannellum/pannellum.js"></script>
 <script src="assets/vendor/exifr/exifr-lite.umd.js"></script>
-<script src="app.js?v=20260724-flicker-fix"></script>
+<script src="app.js?v=20260724-photo-comment-alerts"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    const serviceWorkerVersion = "v67-flicker-fix";
+    const serviceWorkerVersion = "v68-photo-comment-alerts";
     const reloadGuardKey = "reisapp_service_worker_reload";
     let refreshing = false;
     navigator.serviceWorker.addEventListener("controllerchange", () => {
@@ -135,7 +138,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260724-flicker-fix").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260724-photo-comment-alerts").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

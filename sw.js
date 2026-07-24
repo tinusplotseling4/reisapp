@@ -1,9 +1,9 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v67-flicker-fix";
+const CACHE_NAME = "rondreis-noorwegen-2026-v68-photo-comment-alerts";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260724-flicker-fix",
-  "./app.js?v=20260724-flicker-fix",
+  "./style.css?v=20260724-photo-comment-alerts",
+  "./app.js?v=20260724-photo-comment-alerts",
   "./manifest.webmanifest",
   "./data/stages.js?v=20260724-lotte-offline",
   "./data/app-config.public.js",
@@ -34,6 +34,20 @@ self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();
   }
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windowClients) => {
+      const existingClient = windowClients[0];
+      if (existingClient) {
+        existingClient.postMessage({ type: "OPEN_DIARY" });
+        return existingClient.focus();
+      }
+      return clients.openWindow("./?openDiary=1");
+    })
+  );
 });
 
 self.addEventListener("fetch", (event) => {

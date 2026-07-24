@@ -147,6 +147,24 @@ body {
   border-radius: 8px;
 }
 
+.nav-notification-badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--red);
+  color: #fff;
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.nav-notification-badge[hidden] {
+  display: none;
+}
+
 .header-menu .header-tools {
   display: grid;
   gap: 8px;
@@ -1804,6 +1822,57 @@ button:hover,
   margin-top: 8px;
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.photo-comment-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  border-left: 4px solid var(--gold);
+  background: color-mix(in srgb, var(--gold) 13%, var(--panel));
+}
+
+.photo-comment-alert div {
+  display: grid;
+  gap: 3px;
+}
+
+.photo-comment-alert b {
+  color: var(--text);
+}
+
+.photo-comment-alert span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.photo-comment-alert .linkbtn {
+  flex: 0 0 auto;
+}
+
+.notification-permission {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 12px;
+}
+
+.notification-permission .notification-enable {
+  width: auto;
+}
+
+@media (max-width: 560px) {
+  .photo-comment-alert {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .photo-comment-alert .linkbtn {
+    width: fit-content;
+  }
 }
 
 .diary-comment-list {
