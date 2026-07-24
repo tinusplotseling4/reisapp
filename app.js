@@ -3494,7 +3494,11 @@ function drawDashboardLivePosition(point, track = getSavedTrack()) {
   }
 
   if (dashboardFollowLive) {
-    dashboardRouteMap.panTo(latLng, { animate: true });
+    const visibleBounds = dashboardRouteMap.getBounds();
+    const comfortableBounds = visibleBounds.isValid() ? visibleBounds.pad(-0.18) : null;
+    if (!comfortableBounds || !comfortableBounds.contains(latLng)) {
+      dashboardRouteMap.panTo(latLng, { animate: false });
+    }
   }
 }
 
@@ -3525,7 +3529,7 @@ function renderHeroTrackOverlay() {
   `;
 }
 
-function updateLivePosition() {
+function updateLivePosition(shouldFollow = false) {
   if (!navigator.geolocation) {
     setGpsStatus("GPS is niet beschikbaar in deze browser.");
     return Promise.resolve(false);
@@ -3541,7 +3545,7 @@ function updateLivePosition() {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        await saveBrowserPosition(position);
+        await saveBrowserPosition(position, shouldFollow);
         resolve(true);
       },
       (error) => {
@@ -3562,7 +3566,7 @@ function updateLivePosition() {
   });
 }
 
-async function saveBrowserPosition(position) {
+async function saveBrowserPosition(position, shouldFollow = false) {
   const point = {
     lat: position.coords.latitude,
     lon: position.coords.longitude,
@@ -3571,9 +3575,16 @@ async function saveBrowserPosition(position) {
   };
 
   const saved = await saveTrackPoint(point);
-  setDashboardFollowLive(true);
+  if (shouldFollow) setDashboardFollowLive(true);
   drawLivePosition(point);
-  if (totalRouteMap) totalRouteMap.panTo([point.lat, point.lon], { animate: true });
+  if (totalRouteMap) {
+    const latLng = [point.lat, point.lon];
+    const visibleBounds = totalRouteMap.getBounds();
+    const comfortableBounds = visibleBounds.isValid() ? visibleBounds.pad(-0.18) : null;
+    if (!comfortableBounds || !comfortableBounds.contains(latLng)) {
+      totalRouteMap.panTo(latLng, { animate: false });
+    }
+  }
   setGpsStatus(
     saved.shared
       ? `GPS-punt gedeeld. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
@@ -3594,7 +3605,7 @@ function stopLocationTracking() {
 }
 
 function startLocationTracking() {
-  updateLivePosition();
+  updateLivePosition(true);
   if (locationTimer) clearInterval(locationTimer);
   locationTimer = setInterval(updateLivePosition, 300000);
   stopLocationWatch();
@@ -3980,7 +3991,7 @@ function renderDashboard() {
           ? `<div class="dashboard-gps-panel">
               <p class="eyebrow">GPS tracking</p>
               <p id="dashboardGpsStatus">${gpsStatus}</p>
-              <button class="linkbtn mapsbtn" onclick="updateLivePosition()">GPS nu meten</button>
+              <button class="linkbtn mapsbtn" onclick="updateLivePosition(true)">GPS nu meten</button>
             </div>`
           : ""
       }
