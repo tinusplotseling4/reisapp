@@ -65,9 +65,11 @@ let themeMode = localStorage.getItem("reisapp_theme") || "dark";
 const initialUrlParams = new URLSearchParams(window.location.search);
 const requestedDay = Number(initialUrlParams.get("day"));
 const requestedComposeDay = Number(initialUrlParams.get("composeDay"));
+const requestedComposeDate = initialUrlParams.get("composeDate") || "";
 let requestedDayPending = Number.isInteger(requestedDay) && requestedDay >= 1 && requestedDay <= STAGES.length;
 let requestedComposeDayPending =
   Number.isInteger(requestedComposeDay) && requestedComposeDay >= 1 && requestedComposeDay <= STAGES.length;
+let requestedComposeDatePending = /^\d{4}-\d{2}-\d{2}$/.test(requestedComposeDate);
 let activeStage = requestedDayPending
   ? requestedDay - 1
   : requestedComposeDayPending
@@ -112,6 +114,7 @@ let locationWatchId = null;
 let gpsRefreshTimer;
 let diaryDraft = {
   stageIndex: null,
+  diaryDate: "",
   open: false,
   mode: "",
   note: "",
@@ -971,12 +974,21 @@ async function syncLocalVisitedPoisToRemote() {
 async function loadRemoteDiary() {
   if (!isCloudMode() || !remoteTrip) return;
 
-  const { data: entries, error: entriesError } = await supabaseClient
+  let entriesResult = await supabaseClient
     .from("diary_entries")
-    .select("id, stage_index, user_id, note, transcript, created_at, updated_at")
+    .select("id, stage_index, diary_date, user_id, note, transcript, created_at, updated_at")
     .eq("trip_id", remoteTrip.id)
     .order("created_at", { ascending: false });
 
+  if (entriesResult.error && /diary_date|column|schema cache/i.test(entriesResult.error.message || "")) {
+    entriesResult = await supabaseClient
+      .from("diary_entries")
+      .select("id, stage_index, user_id, note, transcript, created_at, updated_at")
+      .eq("trip_id", remoteTrip.id)
+      .order("created_at", { ascending: false });
+  }
+
+  const { data: entries, error: entriesError } = entriesResult;
   if (entriesError) {
     authMessage = entriesError.message;
     remoteDiaryEntries = [];
@@ -1477,17 +1489,17 @@ function openDayRoute(index) {
   if (dayWindow) dayWindow.opener = null;
 }
 
-function getDiaryComposerUrl(index) {
+function getDiaryComposerUrl(diaryDate = getTodayDiaryDate()) {
   const url = new URL(window.location.href);
   url.search = "";
-  url.searchParams.set("composeDay", String(index + 1));
+  url.searchParams.set("composeDate", diaryDate);
   url.hash = "diaryComposer";
   return url.toString();
 }
 
-function openDiaryComposerTab(index) {
+function openDiaryComposerTab() {
   if (!canEditDiary()) return;
-  const diaryWindow = window.open(getDiaryComposerUrl(index), "_blank", "noopener");
+  const diaryWindow = window.open(getDiaryComposerUrl(), "_blank", "noopener");
   if (diaryWindow) diaryWindow.opener = null;
 }
 
@@ -1591,6 +1603,9 @@ function getStageDiary(index) {
           .filter(Boolean);
         return {
           id: entry.id,
+          stageIndex: entry.stage_index,
+          diaryDate: entry.diary_date || "",
+          createdAt: entry.created_at || "",
           created: new Date(entry.created_at).toLocaleString("nl-NL", {
             day: "2-digit",
             month: "2-digit",
@@ -1609,7 +1624,11 @@ function getStageDiary(index) {
       });
   }
 
-  return JSON.parse(localStorage.getItem(getStageDiaryKey(index)) || "[]");
+  return JSON.parse(localStorage.getItem(getStageDiaryKey(index)) || "[]").map((entry) => ({
+    ...entry,
+    stageIndex: Number.isInteger(entry.stageIndex) ? entry.stageIndex : index,
+    diaryDate: entry.diaryDate || "",
+  }));
 }
 
 function normalizeDiaryPhoto(photo) {
@@ -1661,13 +1680,14 @@ function saveStageDiary(index, entries) {
   localStorage.setItem(getStageDiaryKey(index), JSON.stringify(entries));
 }
 
-function resetDiaryDraft(index = activeStage) {
+function resetDiaryDraft(index = activeStage, diaryDate = getTodayDiaryDate()) {
   diaryDraft.photos.forEach((photo) => {
     const src = normalizeDiaryPhoto(photo).src;
     if (src.startsWith("blob:")) URL.revokeObjectURL(src);
   });
   diaryDraft = {
     stageIndex: index,
+    diaryDate,
     open: true,
     mode: "",
     note: "",
@@ -1718,6 +1738,9 @@ function addDiaryEntry(index, entry) {
   const entries = getStageDiary(index);
   entries.unshift({
     id: Date.now(),
+    stageIndex: index,
+    diaryDate: entry.diaryDate || getTripDateKey(getStageDate(index)),
+    createdAt: new Date().toISOString(),
     created: new Date().toLocaleString("nl-NL", {
       day: "2-digit",
       month: "2-digit",
@@ -1885,9 +1908,46 @@ function getTripDateKey(value) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
-function getStageIndexForPhotoDate(takenAt) {
-  const photoDateKey = getTripDateKey(takenAt);
-  return STAGES.findIndex((_, index) => getTripDateKey(getStageDate(index)) === photoDateKey);
+function getTodayDiaryDate() {
+  return getTripDateKey(new Date());
+}
+
+function normalizeDiaryDate(value, fallback = getTodayDiaryDate()) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value || "")) return value;
+  return getTripDateKey(value) || fallback;
+}
+
+function getDiaryDateValue(dateKey) {
+  return new Date(`${normalizeDiaryDate(dateKey)}T12:00:00`);
+}
+
+function formatDiaryDate(dateKey, options = {}) {
+  return getDiaryDateValue(dateKey).toLocaleDateString("nl-NL", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    ...options,
+  });
+}
+
+function getDiaryDateBadge(dateKey) {
+  const date = getDiaryDateValue(dateKey);
+  return {
+    top: date.toLocaleDateString("nl-NL", { weekday: "short" }).replace(".", ""),
+    bottom: date.toLocaleDateString("nl-NL", { day: "numeric", month: "short" }),
+  };
+}
+
+function getLegacyStageIndexForDiaryDate(dateKey) {
+  const exactIndex = STAGES.findIndex(
+    (_, index) => getTripDateKey(getStageDate(index)) === normalizeDiaryDate(dateKey)
+  );
+  if (exactIndex >= 0) return exactIndex;
+
+  const start = getDiaryDateValue(getTripDateKey(getStageDate(0)));
+  const selected = getDiaryDateValue(dateKey);
+  const dayOffset = Math.round((selected - start) / 86400000);
+  return Math.max(0, Math.min(STAGES.length - 1, dayOffset));
 }
 
 async function prepareDiaryPhoto(file, projection = "flat", takenAt = "") {
@@ -1959,26 +2019,27 @@ async function handleDiaryArchivePhotos(input) {
   try {
     for (const file of files) {
       const takenAt = await readDiaryPhotoTakenAt(file);
-      const stageIndex = getStageIndexForPhotoDate(takenAt);
-      if (stageIndex < 0) {
+      const diaryDate = getTripDateKey(takenAt);
+      if (!diaryDate) {
         skippedFiles.push(file.name);
         continue;
       }
       const photo = await prepareDiaryPhoto(file, "flat", takenAt);
-      preparedPhotos.push({ stageIndex, photo });
+      preparedPhotos.push({ diaryDate, photo });
     }
 
     if (!preparedPhotos.length) {
-      throw new Error("Geen foto heeft een datum binnen de 11 reisdagen.");
+      throw new Error("Van geen van de foto's kon een geldige opnamedatum worden gevonden.");
     }
 
     const groups = new Map();
-    preparedPhotos.forEach(({ stageIndex, photo }) => {
-      if (!groups.has(stageIndex)) groups.set(stageIndex, []);
-      groups.get(stageIndex).push(photo);
+    preparedPhotos.forEach(({ diaryDate, photo }) => {
+      if (!groups.has(diaryDate)) groups.set(diaryDate, []);
+      groups.get(diaryDate).push(photo);
     });
 
-    for (const [stageIndex, photos] of groups) {
+    for (const [diaryDate, photos] of groups) {
+      const stageIndex = getLegacyStageIndexForDiaryDate(diaryDate);
       if (isCloudMode() && remoteTrip && authUser) {
         const mediaRows = await uploadDiaryFiles(stageIndex, photos, "photo");
         const { data: entry, error } = await supabaseClient
@@ -1986,6 +2047,7 @@ async function handleDiaryArchivePhotos(input) {
           .insert({
             trip_id: remoteTrip.id,
             stage_index: stageIndex,
+            diary_date: diaryDate,
             user_id: authUser.id,
             note: "",
             transcript: "",
@@ -2005,7 +2067,7 @@ async function handleDiaryArchivePhotos(input) {
             };
           })
         );
-        addDiaryEntry(stageIndex, { photos: localPhotos });
+        addDiaryEntry(stageIndex, { diaryDate, photos: localPhotos });
       }
     }
 
@@ -2015,8 +2077,8 @@ async function handleDiaryArchivePhotos(input) {
       loading: false,
       message:
         `${preparedPhotos.length} foto${preparedPhotos.length === 1 ? "" : "'s"} toegevoegd aan ${dayCount} ` +
-        `${dayCount === 1 ? "reisdag" : "reisdagen"}.` +
-        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen omdat de datum buiten de reis valt.` : ""),
+        `${dayCount === 1 ? "datum" : "datums"}.` +
+        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen omdat de opnamedatum niet kon worden gelezen.` : ""),
     };
   } catch (error) {
     if (isCloudMode() && remoteTrip) await loadRemoteDiary();
@@ -2288,58 +2350,57 @@ async function saveDiaryDraft() {
 
   if (!hasContent) return;
 
+  const firstPhotoDate = diaryDraft.photos
+    .map((photo) => getTripDateKey(getDiaryPhotoTakenAt(photo)))
+    .find(Boolean);
+  const mainDiaryDate = firstPhotoDate || normalizeDiaryDate(diaryDraft.diaryDate);
+  const groups = new Map();
+
+  diaryDraft.photos.forEach((photo) => {
+    const diaryDate = getTripDateKey(getDiaryPhotoTakenAt(photo)) || mainDiaryDate;
+    if (!groups.has(diaryDate)) groups.set(diaryDate, []);
+    groups.get(diaryDate).push(photo);
+  });
+  if (!groups.size || note || transcript || diaryDraft.audioData) {
+    if (!groups.has(mainDiaryDate)) groups.set(mainDiaryDate, []);
+  }
+
   if (isCloudMode() && remoteTrip && authUser) {
     diaryDraft.saving = true;
-    diaryDraft.status = diaryDraft.photos.length ? "Foto wordt geupload..." : "Dagboeknotitie wordt opgeslagen...";
+    diaryDraft.status = diaryDraft.photos.length ? "Foto's worden op datum opgeslagen..." : "Dagboeknotitie wordt opgeslagen...";
     authMessage = "Dagboeknotitie wordt opgeslagen...";
-  renderStages();
-
-    let mediaRows = [];
-    try {
-      mediaRows = mediaRows.concat(await uploadDiaryFiles(diaryDraft.stageIndex, diaryDraft.photos, "photo"));
-      if (diaryDraft.audioData) {
-        mediaRows = mediaRows.concat(await uploadDiaryFiles(diaryDraft.stageIndex, [diaryDraft.audioData], "audio"));
-      }
-    } catch (mediaError) {
-      diaryDraft.saving = false;
-      diaryDraft.status = `Foto uploaden lukte niet: ${mediaError.message}. De foto staat nog in dit concept.`;
-      authMessage = diaryDraft.status;
-      renderStages();
-      renderDiaryPanel();
-      renderDashboardOnly();
-      return;
-    }
-
-    diaryDraft.status = "Dagboekregel wordt opgeslagen...";
     renderStages();
 
-    const { data: entry, error } = await supabaseClient
-      .from("diary_entries")
-      .insert({
-        trip_id: remoteTrip.id,
-        stage_index: diaryDraft.stageIndex,
-        user_id: authUser.id,
-        note,
-        transcript,
-      })
-      .select("*")
-      .single();
-
-    if (error) {
-      diaryDraft.saving = false;
-      diaryDraft.status = `Dagboek opslaan lukte niet: ${error.message}. Probeer opnieuw.`;
-      authMessage = diaryDraft.status;
-      renderStages();
-      renderDiaryPanel();
-      return;
-    }
-
     try {
-      await attachDiaryMedia(entry.id, mediaRows);
+      for (const [diaryDate, photos] of groups) {
+        const stageIndex = getLegacyStageIndexForDiaryDate(diaryDate);
+        const isMainDate = diaryDate === mainDiaryDate;
+        let mediaRows = await uploadDiaryFiles(stageIndex, photos, "photo");
+        if (isMainDate && diaryDraft.audioData) {
+          mediaRows = mediaRows.concat(
+            await uploadDiaryFiles(stageIndex, [diaryDraft.audioData], "audio")
+          );
+        }
+
+        const { data: entry, error } = await supabaseClient
+          .from("diary_entries")
+          .insert({
+            trip_id: remoteTrip.id,
+            stage_index: stageIndex,
+            diary_date: diaryDate,
+            user_id: authUser.id,
+            note: isMainDate ? note : "",
+            transcript: isMainDate ? transcript : "",
+          })
+          .select("*")
+          .single();
+        if (error) throw error;
+        await attachDiaryMedia(entry.id, mediaRows);
+      }
       authMessage = "Dagboeknotitie opgeslagen voor het reisarchief.";
-    } catch (mediaError) {
+    } catch (saveError) {
       diaryDraft.saving = false;
-      diaryDraft.status = `Foto is geupload, maar koppelen aan het dagboek lukte niet: ${mediaError.message}.`;
+      diaryDraft.status = `Dagboek opslaan lukte niet: ${saveError.message}. Probeer opnieuw.`;
       authMessage = diaryDraft.status;
       await loadRemoteDiary();
       renderStages();
@@ -2349,7 +2410,7 @@ async function saveDiaryDraft() {
     }
 
     await loadRemoteDiary();
-    resetDiaryDraft(diaryDraft.stageIndex);
+    resetDiaryDraft(getLegacyStageIndexForDiaryDate(mainDiaryDate), mainDiaryDate);
     diaryDraft.status = "Dagboeknotitie opgeslagen.";
     notifyDiarySaved();
     renderStages();
@@ -2358,24 +2419,28 @@ async function saveDiaryDraft() {
     return;
   }
 
-  const localPhotos = await Promise.all(
-    diaryDraft.photos.map(async (photo) => {
-      const item = normalizeDiaryPhoto(photo);
-      return {
-        ...item,
-        src: item.file ? await blobToDataUrl(item.file) : item.src,
-        file: null,
-      };
-    })
-  );
-
-  addDiaryEntry(diaryDraft.stageIndex, {
-    note,
-    photos: localPhotos,
-    audioData: diaryDraft.audioData,
-    transcript,
-  });
-  resetDiaryDraft(diaryDraft.stageIndex);
+  for (const [diaryDate, photos] of groups) {
+    const stageIndex = getLegacyStageIndexForDiaryDate(diaryDate);
+    const isMainDate = diaryDate === mainDiaryDate;
+    const localPhotos = await Promise.all(
+      photos.map(async (photo) => {
+        const item = normalizeDiaryPhoto(photo);
+        return {
+          ...item,
+          src: item.file ? await blobToDataUrl(item.file) : item.src,
+          file: null,
+        };
+      })
+    );
+    addDiaryEntry(stageIndex, {
+      diaryDate,
+      note: isMainDate ? note : "",
+      photos: localPhotos,
+      audioData: isMainDate ? diaryDraft.audioData : "",
+      transcript: isMainDate ? transcript : "",
+    });
+  }
+  resetDiaryDraft(getLegacyStageIndexForDiaryDate(mainDiaryDate), mainDiaryDate);
   diaryDraft.status = "Dagboeknotitie opgeslagen.";
   notifyDiarySaved();
   renderStages();
@@ -2828,14 +2893,9 @@ function getPhotoCount() {
 }
 
 function getDiaryCount() {
-  return STAGES.reduce(
-    (total, _, index) =>
-      total +
-      getStageDiary(index).filter(
-        (entry) => (entry.note || "").trim() || (entry.transcript || "").trim() || (entry.photos || []).length
-      ).length,
-    0
-  );
+  return getAllDiaryEntries().filter(
+    (entry) => (entry.note || "").trim() || (entry.transcript || "").trim() || (entry.photos || []).length
+  ).length;
 }
 
 function getStageStatus(index) {
@@ -3599,16 +3659,16 @@ function renderDiaryComposerPage() {
   }
 
   const stageIndex = diaryDraft.stageIndex ?? activeStage;
-  const stage = STAGES[stageIndex];
-  const badge = getStageDateBadge(stageIndex);
+  const diaryDate = normalizeDiaryDate(diaryDraft.diaryDate);
+  const badge = getDiaryDateBadge(diaryDate);
   panel.innerHTML = `
     <section id="diaryComposer" class="diary-compose-page">
       <header class="diary-compose-page-head">
         <span class="day-badge large">${badge.top}<br>${badge.bottom}</span>
         <div>
           <p class="eyebrow">Dagboekherinnering toevoegen</p>
-          <h2>Dag ${stageIndex + 1}: ${stage.title}</h2>
-          <p class="muted">${stage.from} -> ${stage.to}</p>
+          <h2>${formatDiaryDate(diaryDate)}</h2>
+          <p class="muted">Foto's worden automatisch bij hun opnamedatum bewaard.</p>
         </div>
       </header>
       ${
@@ -3620,15 +3680,50 @@ function renderDiaryComposerPage() {
   `;
 }
 
+function getDiaryEntryDate(entry, fallbackStageIndex = 0) {
+  const photoDate = getDiaryPhotoItems(entry)
+    .map((photo) => getTripDateKey(getDiaryPhotoTakenAt(photo)))
+    .find(Boolean);
+  return (
+    photoDate ||
+    normalizeDiaryDate(entry.diaryDate, "") ||
+    getTripDateKey(entry.createdAt) ||
+    getTripDateKey(getStageDate(fallbackStageIndex))
+  );
+}
+
+function getAllDiaryEntries() {
+  return STAGES.flatMap((_, stageIndex) =>
+    getStageDiary(stageIndex).map((entry) => ({
+      ...entry,
+      stageIndex: Number.isInteger(entry.stageIndex) ? entry.stageIndex : stageIndex,
+      diaryDate: getDiaryEntryDate(entry, stageIndex),
+    }))
+  );
+}
+
+function getDiaryCalendarDates() {
+  const dates = new Set(STAGES.map((_, index) => getTripDateKey(getStageDate(index))));
+  getAllDiaryEntries().forEach((entry) => {
+    if (entry.diaryDate) dates.add(entry.diaryDate);
+  });
+  return Array.from(dates).sort();
+}
+
+function getDiaryEntriesByDate(dateKey) {
+  return getAllDiaryEntries()
+    .filter((entry) => entry.diaryDate === dateKey)
+    .sort((left, right) => Date.parse(right.createdAt || "") - Date.parse(left.createdAt || ""));
+}
 
 function getAllDiaryPhotos() {
-  return STAGES.flatMap((stage, stageIndex) =>
+  return STAGES.flatMap((_, stageIndex) =>
     getStageDiary(stageIndex).flatMap((entry) =>
       getDiaryPhotoItems(entry).map((photo) => ({
         photo: photo.src,
         projection: photo.projection,
         stageIndex,
-        stageTitle: stage.title,
+        diaryDate: getTripDateKey(getDiaryPhotoTakenAt(photo)) || getDiaryEntryDate(entry, stageIndex),
         created: entry.created,
         takenAt: getDiaryPhotoTakenAt(photo) || "",
         author: entry.author || "Reiziger",
@@ -3682,10 +3777,10 @@ function renderTravelPhotoGallery() {
                           caption: item.note,
                           projection: item.projection,
                         },
-                        `Reisfoto van ${item.stageTitle}`
+                        `Reisfoto van ${formatDiaryDate(item.diaryDate)}`
                       )}
                       <figcaption>
-                        <b>${item.stageTitle}</b>
+                        <b>${formatDiaryDate(item.diaryDate)}</b>
                         <span>${item.created}${item.author ? ` - ${item.author}` : ""}</span>
                         ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
                       </figcaption>
@@ -3799,9 +3894,8 @@ function renderDiaryPanel() {
       <div class="diary-head">
         <div>
           <p class="eyebrow">Reisdagboek</p>
-          <h2>Dagboek per dag</h2>
+          <h2>Dagboek op datum</h2>
         </div>
-        <button class="linkbtn" onclick="showTab('days')">Naar dagroutes</button>
       </div>
       ${
         canAddDiaryMedia()
@@ -3827,20 +3921,19 @@ function renderDiaryPanel() {
           : ""
       }
       <div class="trip-diary-days">
-        ${STAGES.map((stage, index) => {
-          const entries = getStageDiary(index);
-          const dateBadge = getStageDateBadge(index);
+        ${getDiaryCalendarDates().map((dateKey) => {
+          const entries = getDiaryEntriesByDate(dateKey);
+          const dateBadge = getDiaryDateBadge(dateKey);
           return `
             <details
               class="trip-diary-day"
-              ${openDiaryDays.has(index) ? "open" : ""}
-              ontoggle="setDiaryDayOpen(${index}, this.open)"
+              ${openDiaryDays.has(dateKey) ? "open" : ""}
+              ontoggle="setDiaryDayOpen('${dateKey}', this.open)"
             >
               <summary class="trip-diary-day-head">
                 <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
                 <span class="trip-diary-day-title">
-                  <b>Dagboeknotities dag ${index + 1}</b>
-                  <small>${stage.title}</small>
+                  <b>${formatDiaryDate(dateKey)}</b>
                   <small>${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</small>
                 </span>
                 <span class="trip-diary-toggle" aria-hidden="true">+</span>
@@ -3848,8 +3941,8 @@ function renderDiaryPanel() {
               <div class="trip-diary-day-content">
                 ${
                   entries.length
-                    ? entries.map((entry) => renderDiaryEntryContent(entry, index, canEditDiary())).join("")
-                    : `<p class="muted">Nog geen dagboek voor deze dag.</p>`
+                    ? entries.map((entry) => renderDiaryEntryContent(entry, entry.stageIndex, canEditDiary())).join("")
+                    : `<p class="muted">Nog geen dagboek voor deze datum.</p>`
                 }
               </div>
             </details>
@@ -3860,9 +3953,9 @@ function renderDiaryPanel() {
   `;
 }
 
-function setDiaryDayOpen(index, open) {
-  if (open) openDiaryDays.add(index);
-  else openDiaryDays.delete(index);
+function setDiaryDayOpen(dateKey, open) {
+  if (open) openDiaryDays.add(dateKey);
+  else openDiaryDays.delete(dateKey);
 }
 
 function renderDashboard() {
@@ -3871,7 +3964,7 @@ function renderDashboard() {
     ${
       canEditDiary()
         ? `<div class="dashboard-top-actions">
-            <button class="linkbtn primary diary-add" onclick="openDiaryComposerTab(${activeStage})">
+            <button class="linkbtn primary diary-add" onclick="openDiaryComposerTab()">
               Dagboekherinnering toevoegen
             </button>
           </div>`
@@ -3960,7 +4053,7 @@ function renderDashboard() {
           <button class="linkbtn" onclick="openStage(${activeStage})">Open dagdetails</button>
           ${
             canEditDiary()
-              ? `<button class="linkbtn diary-add" onclick="openDiaryComposerTab(${activeStage})">Dagboeknotitie toevoegen</button>`
+              ? `<button class="linkbtn diary-add" onclick="openDiaryComposerTab()">Dagboeknotitie toevoegen</button>`
               : ""
           }
         </div>
@@ -4675,8 +4768,6 @@ function renderDayRouteOverview() {
 
 function renderStages() {
   const stage = STAGES[activeStage];
-  const diary = getStageDiary(activeStage);
-  const showStageDiaryHistory = canSeeDiaryHistoryInStage();
   const fuelAdvice = getFuelAdvice(stage);
   const groceryAdvice = getGroceryAdvice(stage);
   const routeText = stage.route.join(" -> ");
@@ -4716,7 +4807,7 @@ function renderStages() {
             <h3>Dagboek</h3>
             ${
               canEditDiary()
-                ? `<button class="linkbtn primary diary-add" onclick="openDiaryComposerTab(${activeStage})">Dagboeknotitie toevoegen</button>`
+                ? `<button class="linkbtn primary diary-add" onclick="openDiaryComposerTab()">Dagboeknotitie toevoegen</button>`
                 : ""
             }
           </div>
@@ -4724,18 +4815,7 @@ function renderStages() {
             canEditDiary()
               ? `<p class="muted">Alle eerdere herinneringen staan gebundeld in het dagboek.</p>
                  <button class="linkbtn" onclick="showTab('diary')">Open dagboek</button>`
-              : ""
-          }
-          ${
-            showStageDiaryHistory && diary.length
-              ? diary
-                  .map(
-                    (entry) => renderDiaryEntryContent(entry, activeStage, false)
-                  )
-                  .join("")
-              : showStageDiaryHistory
-                ? `<p class="muted">Nog geen dagboeknotities voor deze dag.</p>`
-                : ""
+              : `<button class="linkbtn" onclick="showTab('diary')">Open dagboek</button>`
           }
         </section>
 
@@ -5339,10 +5419,15 @@ function render() {
   renderWeatherPanel();
   renderDiaryComposerPage();
 
-  if (requestedComposeDayPending) {
+  if (requestedComposeDatePending || requestedComposeDayPending) {
+    const diaryDate = requestedComposeDatePending
+      ? requestedComposeDate
+      : getTripDateKey(getStageDate(requestedComposeDay - 1));
+    activeStage = getLegacyStageIndexForDiaryDate(diaryDate);
+    requestedComposeDatePending = false;
     requestedComposeDayPending = false;
     localStorage.setItem("reisapp_active_stage", String(activeStage));
-    resetDiaryDraft(activeStage);
+    resetDiaryDraft(activeStage, diaryDate);
     renderDiaryComposerPage();
     showTab("compose");
   }

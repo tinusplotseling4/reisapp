@@ -59,6 +59,7 @@ create table if not exists public.diary_entries (
   user_id uuid not null references auth.users(id) on delete cascade,
   note text,
   transcript text,
+  diary_date date not null default ((now() at time zone 'Europe/Oslo')::date),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -110,6 +111,7 @@ create index if not exists trip_members_trip_id_idx on public.trip_members(trip_
 create index if not exists stage_progress_trip_id_idx on public.stage_progress(trip_id);
 create index if not exists visited_pois_trip_id_idx on public.visited_pois(trip_id);
 create index if not exists diary_entries_trip_id_idx on public.diary_entries(trip_id);
+create index if not exists diary_entries_trip_date_idx on public.diary_entries(trip_id, diary_date, created_at);
 create index if not exists diary_media_entry_id_idx on public.diary_media(diary_entry_id);
 create index if not exists diary_media_taken_at_idx on public.diary_media(taken_at);
 create index if not exists diary_comments_entry_id_idx on public.diary_comments(diary_entry_id, created_at);

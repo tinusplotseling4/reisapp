@@ -13,7 +13,7 @@
 <link rel="apple-touch-icon" href="assets/images/icons/app-icon.svg">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-<link rel="stylesheet" href="style.css?v=20260724-lotte-offline">
+<link rel="stylesheet" href="style.css?v=20260724-diary-calendar">
 </head>
 <body>
 <main class="app-shell">
@@ -121,7 +121,7 @@
 <script src="assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline"></script>
 <script src="assets/vendor/pannellum/pannellum.js"></script>
 <script src="assets/vendor/exifr/exifr-lite.umd.js"></script>
-<script src="app.js?v=20260724-lotte-offline"></script>
+<script src="app.js?v=20260724-diary-calendar"></script>
 <script>
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -132,7 +132,7 @@ if ("serviceWorker" in navigator) {
       window.location.reload();
     });
 
-    navigator.serviceWorker.register("sw.js?v=20260724-lotte-offline").then((registration) => {
+    navigator.serviceWorker.register("sw.js?v=20260724-diary-calendar").then((registration) => {
       registration.update();
       registration.addEventListener("updatefound", () => {
         const worker = registration.installing;

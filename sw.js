@@ -1,9 +1,9 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v65-lotte-offline";
+const CACHE_NAME = "rondreis-noorwegen-2026-v66-diary-calendar";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260724-lotte-offline",
-  "./app.js?v=20260724-lotte-offline",
+  "./style.css?v=20260724-diary-calendar",
+  "./app.js?v=20260724-diary-calendar",
   "./manifest.webmanifest",
   "./data/stages.js?v=20260724-lotte-offline",
   "./data/app-config.public.js",

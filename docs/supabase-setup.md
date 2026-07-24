@@ -63,6 +63,14 @@ Voor Lotte's offline bingokaart met automatische synchronisatie:
 
 Dit maakt de gedeelde bingotabel en de private fotobucket `lotte-photos`.
 
+Om het dagboek op kalenderdatum in plaats van geplande dagrit in te delen:
+
+1. Open de Supabase SQL editor.
+2. Plak de inhoud van `docs/supabase-migration-diary-calendar-dates.sql`.
+3. Voer het script uit.
+
+Bestaande foto's worden daarbij op hun opgeslagen opnamedatum geplaatst.
+
 ## 6. Testdata leegmaken
 
 Wil je de gedeelde reisdata schoonmaken zonder leden, rollen en uitnodigingslinks te verwijderen?
