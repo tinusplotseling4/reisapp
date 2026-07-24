@@ -55,6 +55,14 @@ Voor interactieve 360-foto's in het dagboek:
 
 Dit voegt alleen de projectiesoort aan dagboekfoto's toe. Bestaande foto's blijven gewone foto's.
 
+Voor Lotte's offline bingokaart met automatische synchronisatie:
+
+1. Open de Supabase SQL editor.
+2. Plak de inhoud van `docs/supabase-migration-lotte-bingo.sql`.
+3. Voer het script uit.
+
+Dit maakt de gedeelde bingotabel en de private fotobucket `lotte-photos`.
+
 ## 6. Testdata leegmaken
 
 Wil je de gedeelde reisdata schoonmaken zonder leden, rollen en uitnodigingslinks te verwijderen?

@@ -1962,6 +1962,40 @@ button:hover,
   margin-top: 16px;
 }
 
+.lotte-sync-status {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  margin-top: 12px;
+  padding: 8px 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.lotte-sync-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 50%;
+  background: #94a3b8;
+}
+
+.lotte-sync-status.synced .lotte-sync-dot {
+  background: #22c55e;
+}
+
+.lotte-sync-status.pending .lotte-sync-dot,
+.lotte-sync-status.syncing .lotte-sync-dot {
+  background: #f59e0b;
+}
+
+.lotte-sync-status.offline .lotte-sync-dot,
+.lotte-sync-status.error .lotte-sync-dot {
+  background: #ef4444;
+}
+
 .lotte-item {
   background: transparent;
   border: 0;
@@ -2017,9 +2051,16 @@ button:hover,
 }
 
 .lotte-photo {
+  width: min(100%, 220px);
   max-width: 220px;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.lotte-photo.loading {
+  background: var(--control-bg);
 }
 
 input[type="checkbox"] {

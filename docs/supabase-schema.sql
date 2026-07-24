@@ -94,6 +94,18 @@ create table if not exists public.gps_points (
   recorded_at timestamptz not null default now()
 );
 
+create table if not exists public.lotte_bingo_items (
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  item_index integer not null check (item_index between 0 and 32),
+  checked boolean not null default false,
+  note text not null default '',
+  score integer check (score between 1 and 5),
+  photo_path text,
+  updated_by uuid not null references auth.users(id) on delete cascade,
+  updated_at timestamptz not null default now(),
+  primary key (trip_id, item_index)
+);
+
 create index if not exists trip_members_trip_id_idx on public.trip_members(trip_id);
 create index if not exists stage_progress_trip_id_idx on public.stage_progress(trip_id);
 create index if not exists visited_pois_trip_id_idx on public.visited_pois(trip_id);
@@ -102,6 +114,7 @@ create index if not exists diary_media_entry_id_idx on public.diary_media(diary_
 create index if not exists diary_media_taken_at_idx on public.diary_media(taken_at);
 create index if not exists diary_comments_entry_id_idx on public.diary_comments(diary_entry_id, created_at);
 create index if not exists gps_points_trip_recorded_idx on public.gps_points(trip_id, recorded_at);
+create index if not exists lotte_bingo_items_trip_updated_idx on public.lotte_bingo_items(trip_id, updated_at);
 
 create or replace function public.is_trip_member(check_trip_id uuid)
 returns boolean
@@ -175,6 +188,7 @@ alter table public.diary_entries enable row level security;
 alter table public.diary_media enable row level security;
 alter table public.diary_comments enable row level security;
 alter table public.gps_points enable row level security;
+alter table public.lotte_bingo_items enable row level security;
 
 create policy "profiles can read own profile"
 on public.profiles for select
@@ -382,11 +396,34 @@ with check (
   and public.has_trip_role(trip_id, array['admin', 'leader', 'traveler'])
 );
 
+create policy "trip members can read lotte bingo"
+on public.lotte_bingo_items for select
+to authenticated
+using (public.is_trip_member(trip_id));
+
+create policy "active travelers can add lotte bingo"
+on public.lotte_bingo_items for insert
+to authenticated
+with check (
+  updated_by = auth.uid()
+  and public.has_trip_role(trip_id, array['admin', 'leader', 'traveler'])
+);
+
+create policy "active travelers can update lotte bingo"
+on public.lotte_bingo_items for update
+to authenticated
+using (public.has_trip_role(trip_id, array['admin', 'leader', 'traveler']))
+with check (
+  updated_by = auth.uid()
+  and public.has_trip_role(trip_id, array['admin', 'leader', 'traveler'])
+);
+
 -- Storage buckets to create in Supabase Storage:
 -- 1. diary-photos
 -- 2. diary-audio
+-- 3. lotte-photos
 --
--- Keep both buckets private. The app should upload with paths like:
+-- Keep all buckets private. The app should upload with paths like:
 -- {trip_id}/{stage_index}/{entry_id}/{filename}
 --
 -- Storage policies are added in the next implementation step, when the

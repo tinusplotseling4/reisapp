@@ -47,6 +47,15 @@ let remoteDiaryComments = [];
 let remoteGpsPoints = [];
 let remoteVisitedPois = [];
 let remoteVisitedPoisLoaded = false;
+let lotteSyncState = {
+  status: navigator.onLine ? "idle" : "offline",
+  message: navigator.onLine ? "Bingokaart is lokaal beschikbaar." : "Offline beschikbaar.",
+};
+let lotteSyncTimer = null;
+let lotteSyncInFlight = false;
+let lotteLegacyMigrationStarted = false;
+let lotteRemotePhotoUrls = {};
+let lottePhotoObjectUrls = {};
 let newMemberName = "";
 let newMemberRole = "follower";
 let currentUserId = localStorage.getItem("reisapp_current_user") || "jeroen";
@@ -328,12 +337,15 @@ function clearLocalTestData() {
       key === "reisapp_live_track" ||
       key === "lotte_items" ||
       key === "lotte_open" ||
+      key === "lotte_sync_pending" ||
+      key === "lotte_sync_initialized" ||
       key.startsWith("reisapp_stage_diary_") ||
       key.startsWith("stage_")
     ) {
       localStorage.removeItem(key);
     }
   });
+  window.indexedDB?.deleteDatabase("reisapp-lotte");
 
   activeStage = 0;
   driving = false;
@@ -891,6 +903,10 @@ async function loadRemoteState() {
   await syncLocalVisitedPoisToRemote();
   await loadRemoteDiary();
   await loadRemoteGps();
+  initializeLotteSyncQueue();
+  await migrateLegacyLottePhotos();
+  await loadRemoteLotte();
+  await syncLottePassport();
 }
 
 async function loadRemoteVisitedPois() {
@@ -2807,8 +2823,8 @@ function getMustSeenCount() {
 }
 
 function getPhotoCount() {
-  const data = JSON.parse(localStorage.getItem("lotte_items") || "{}");
-  return Object.values(data).filter((item) => item.photo).length;
+  const data = getLocalLotteItems();
+  return Object.values(data).filter((item) => item.photo || item.photoStored || item.photoPath).length;
 }
 
 function getDiaryCount() {
@@ -4793,24 +4809,374 @@ function toggleLotteOpen(index) {
   renderLotte();
 }
 
-function saveLotteItem(index, field, value) {
-  if (!canEditLottePassport()) return;
-  const data = JSON.parse(localStorage.getItem("lotte_items") || "{}");
-  data[index] = data[index] || {};
-  data[index][field] = value;
-  localStorage.setItem("lotte_items", JSON.stringify(data));
-  renderLotte();
+function getLocalLotteItems() {
+  return JSON.parse(localStorage.getItem("lotte_items") || "{}");
 }
 
-function saveLottePhoto(index, input) {
+function setLocalLotteItems(items) {
+  localStorage.setItem("lotte_items", JSON.stringify(items));
+}
+
+function getPendingLotteItems() {
+  return JSON.parse(localStorage.getItem("lotte_sync_pending") || "{}");
+}
+
+function setPendingLotteItems(items) {
+  localStorage.setItem("lotte_sync_pending", JSON.stringify(items));
+}
+
+function setLotteSyncState(status, message) {
+  lotteSyncState = { status, message };
+  const element = document.getElementById("lotteSyncStatus");
+  if (!element) return;
+  element.className = `lotte-sync-status ${status}`;
+  const messageElement = element.querySelector("span:last-child");
+  if (messageElement) messageElement.textContent = message;
+}
+
+function markLotteItemPending(index, updatedAt) {
+  const pending = getPendingLotteItems();
+  pending[index] = updatedAt;
+  setPendingLotteItems(pending);
+}
+
+function initializeLotteSyncQueue() {
+  if (localStorage.getItem("lotte_sync_initialized") === "true") return;
+  const items = getLocalLotteItems();
+  const pending = getPendingLotteItems();
+  Object.entries(items).forEach(([index, item]) => {
+    if (!item || (!item.checked && !item.note && !item.score && !item.photo && !item.photoStored && !item.photoPath)) {
+      return;
+    }
+    item.updatedAt = item.updatedAt || new Date().toISOString();
+    pending[index] = item.updatedAt;
+  });
+  setLocalLotteItems(items);
+  setPendingLotteItems(pending);
+  localStorage.setItem("lotte_sync_initialized", "true");
+}
+
+function openLottePhotoDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open("reisapp-lotte", 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains("photos")) {
+        request.result.createObjectStore("photos", { keyPath: "itemIndex" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Offline foto-opslag kon niet worden geopend."));
+  });
+}
+
+async function getLottePhotoRecord(index) {
+  const database = await openLottePhotoDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction("photos", "readonly");
+    const request = transaction.objectStore("photos").get(index);
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error);
+    transaction.oncomplete = () => database.close();
+  });
+}
+
+async function storeLottePhotoRecord(index, blob, remotePath = "") {
+  const database = await openLottePhotoDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction("photos", "readwrite");
+    transaction.objectStore("photos").put({
+      itemIndex: index,
+      blob,
+      remotePath,
+      savedAt: new Date().toISOString(),
+    });
+    transaction.oncomplete = () => {
+      database.close();
+      resolve();
+    };
+    transaction.onerror = () => {
+      database.close();
+      reject(transaction.error);
+    };
+  });
+}
+
+function setLottePhotoPreview(index, blob) {
+  if (lottePhotoObjectUrls[index]) URL.revokeObjectURL(lottePhotoObjectUrls[index]);
+  const objectUrl = URL.createObjectURL(blob);
+  lottePhotoObjectUrls[index] = objectUrl;
+  document.querySelectorAll(`[data-lotte-photo-index="${index}"]`).forEach((image) => {
+    image.src = objectUrl;
+    image.classList.remove("loading");
+  });
+}
+
+async function hydrateLottePhotoPreviews() {
+  const images = Array.from(document.querySelectorAll("[data-lotte-photo-index]"));
+  await Promise.all(
+    images.map(async (image) => {
+      const index = Number(image.dataset.lottePhotoIndex);
+      try {
+        const record = await getLottePhotoRecord(index);
+        if (record?.blob) setLottePhotoPreview(index, record.blob);
+      } catch (_error) {
+        image.classList.remove("loading");
+      }
+    })
+  );
+}
+
+async function optimizeLottePhoto(file) {
+  if (!file.type.startsWith("image/")) throw new Error("Kies een foto.");
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadDiaryImage(sourceUrl);
+    const scale = Math.min(1, 1280 / Math.max(image.naturalWidth, image.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Deze telefoon kan de foto niet voorbereiden.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return await canvasToJpegBlob(canvas, 0.82);
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+function scheduleLotteSync(delay = 600) {
+  if (lotteSyncTimer) clearTimeout(lotteSyncTimer);
+  lotteSyncTimer = setTimeout(() => syncLottePassport(), delay);
+}
+
+function saveLotteItem(index, field, value, renderNow = true) {
+  if (!canEditLottePassport()) return;
+  const data = getLocalLotteItems();
+  data[index] = data[index] || {};
+  data[index][field] = value;
+  data[index].updatedAt = new Date().toISOString();
+  setLocalLotteItems(data);
+  markLotteItemPending(index, data[index].updatedAt);
+
+  setLotteSyncState(
+    navigator.onLine ? "pending" : "offline",
+    navigator.onLine ? "Wijziging wordt gesynchroniseerd..." : "Offline bewaard - synchroniseert zodra internet terug is."
+  );
+  if (renderNow) renderLotte();
+  scheduleLotteSync(field === "note" ? 1400 : 200);
+}
+
+async function saveLottePhoto(index, input) {
   if (!canEditLottePassport()) return;
   const file = input.files[0];
   if (!file) return;
 
-  const reader = new FileReader();
-  reader.onload = () => saveLotteItem(index, "photo", reader.result);
-  reader.readAsDataURL(file);
+  setLotteSyncState("pending", "Foto wordt offline voorbereid...");
+  try {
+    const blob = await optimizeLottePhoto(file);
+    await storeLottePhotoRecord(index, blob);
+    const data = getLocalLotteItems();
+    data[index] = data[index] || {};
+    data[index].photoStored = true;
+    data[index].updatedAt = new Date().toISOString();
+    setLocalLotteItems(data);
+    markLotteItemPending(index, data[index].updatedAt);
+    renderLotte();
+    setLotteSyncState(
+      navigator.onLine ? "pending" : "offline",
+      navigator.onLine ? "Foto wordt gesynchroniseerd..." : "Foto offline bewaard - upload volgt bij internet."
+    );
+    scheduleLotteSync(100);
+  } catch (error) {
+    setLotteSyncState("error", `Foto bewaren lukte niet: ${error.message}`);
+  } finally {
+    input.value = "";
+  }
 }
+
+async function migrateLegacyLottePhotos() {
+  if (lotteLegacyMigrationStarted) return;
+  lotteLegacyMigrationStarted = true;
+  const items = getLocalLotteItems();
+  let changed = false;
+
+  for (const [indexKey, item] of Object.entries(items)) {
+    if (!item?.photo?.startsWith("data:")) continue;
+    try {
+      const blob = await (await fetch(item.photo)).blob();
+      await storeLottePhotoRecord(Number(indexKey), blob);
+      item.photoStored = true;
+      item.updatedAt = new Date().toISOString();
+      delete item.photo;
+      markLotteItemPending(Number(indexKey), item.updatedAt);
+      changed = true;
+    } catch (_error) {
+      // Keep the legacy data URL when this browser cannot move it to IndexedDB.
+    }
+  }
+
+  if (!changed) return;
+  setLocalLotteItems(items);
+  renderLotte();
+  scheduleLotteSync(100);
+}
+
+async function cacheRemoteLottePhoto(index, remotePath, signedUrl) {
+  try {
+    const existing = await getLottePhotoRecord(index);
+    if (existing?.blob && existing.remotePath === remotePath) return;
+    const response = await fetch(signedUrl);
+    if (!response.ok) return;
+    await storeLottePhotoRecord(index, await response.blob(), remotePath);
+  } catch (_error) {
+    // The signed URL still provides an online preview when offline caching fails.
+  }
+}
+
+async function loadRemoteLotte() {
+  if (!isCloudMode() || !remoteTrip || !authUser) return;
+
+  const { data: rows, error } = await supabaseClient
+    .from("lotte_bingo_items")
+    .select("item_index, checked, note, score, photo_path, updated_at")
+    .eq("trip_id", remoteTrip.id)
+    .order("item_index", { ascending: true });
+
+  if (error) {
+    setLotteSyncState(
+      "error",
+      /lotte_bingo_items|schema cache|does not exist|relation/i.test(error.message || "")
+        ? "Bingokaart blijft lokaal bewaard; centrale synchronisatie wordt voorbereid."
+        : "Bingokaart blijft lokaal beschikbaar."
+    );
+    return;
+  }
+
+  const localItems = getLocalLotteItems();
+  const pending = getPendingLotteItems();
+  lotteRemotePhotoUrls = {};
+  const photoCacheTasks = [];
+
+  for (const row of rows || []) {
+    const index = Number(row.item_index);
+    if (pending[index]) continue;
+    localItems[index] = {
+      checked: Boolean(row.checked),
+      note: row.note || "",
+      score: row.score ? String(row.score) : "",
+      photoPath: row.photo_path || "",
+      photoStored: Boolean(row.photo_path),
+      updatedAt: row.updated_at,
+    };
+
+    if (row.photo_path) {
+      const { data: signed } = await supabaseClient.storage
+        .from("lotte-photos")
+        .createSignedUrl(row.photo_path, 60 * 60);
+      if (signed?.signedUrl) {
+        lotteRemotePhotoUrls[index] = signed.signedUrl;
+        photoCacheTasks.push(cacheRemoteLottePhoto(index, row.photo_path, signed.signedUrl));
+      }
+    }
+  }
+
+  setLocalLotteItems(localItems);
+  if (!Object.keys(pending).length) {
+    setLotteSyncState("synced", "Bingokaart is bijgewerkt.");
+  }
+  renderLotte();
+  await Promise.all(photoCacheTasks);
+  hydrateLottePhotoPreviews();
+}
+
+async function syncLottePassport() {
+  if (lotteSyncInFlight) return;
+  const pending = getPendingLotteItems();
+  const indices = Object.keys(pending).map(Number);
+
+  if (!indices.length) {
+    if (navigator.onLine) setLotteSyncState("synced", "Bingokaart is bijgewerkt.");
+    return;
+  }
+  if (!navigator.onLine || !isCloudMode() || !remoteTrip || !authUser || !canEditLottePassport()) {
+    setLotteSyncState("offline", "Offline bewaard - synchroniseert zodra internet terug is.");
+    return;
+  }
+
+  lotteSyncInFlight = true;
+  setLotteSyncState("syncing", `${indices.length} wijziging${indices.length === 1 ? "" : "en"} synchroniseren...`);
+
+  try {
+    const items = getLocalLotteItems();
+    for (const index of indices) {
+      const item = items[index] || {};
+      let photoPath = item.photoPath || null;
+      const photoRecord = await getLottePhotoRecord(index);
+
+      if (photoRecord?.blob && photoRecord.remotePath !== photoPath) {
+        photoPath = `${remoteTrip.id}/${index}/photo-${Date.now()}-${authUser.id}.jpg`;
+        const { error: uploadError } = await supabaseClient.storage
+          .from("lotte-photos")
+          .upload(photoPath, photoRecord.blob, {
+            contentType: photoRecord.blob.type || "image/jpeg",
+            upsert: false,
+        });
+        if (uploadError) throw uploadError;
+        await storeLottePhotoRecord(index, photoRecord.blob, photoPath);
+        item.photoPath = photoPath;
+        item.photoStored = true;
+        items[index] = item;
+        setLocalLotteItems(items);
+      }
+
+      const score = Number(item.score);
+      const { error: upsertError } = await supabaseClient.from("lotte_bingo_items").upsert(
+        {
+          trip_id: remoteTrip.id,
+          item_index: index,
+          checked: Boolean(item.checked),
+          note: item.note || "",
+          score: Number.isInteger(score) && score >= 1 && score <= 5 ? score : null,
+          photo_path: photoPath,
+          updated_by: authUser.id,
+          updated_at: item.updatedAt || new Date().toISOString(),
+        },
+        { onConflict: "trip_id,item_index" }
+      );
+      if (upsertError) throw upsertError;
+
+      item.photoPath = photoPath || "";
+      item.photoStored = Boolean(photoPath || photoRecord?.blob);
+      items[index] = item;
+      delete pending[index];
+      setLocalLotteItems(items);
+      setPendingLotteItems(pending);
+    }
+
+    setLotteSyncState("synced", "Bingokaart is bijgewerkt.");
+    await loadRemoteLotte();
+  } catch (error) {
+    setLotteSyncState(
+      "error",
+      navigator.onLine
+        ? "Lokaal bewaard - synchronisatie wordt opnieuw geprobeerd."
+        : "Offline bewaard - synchroniseert zodra internet terug is."
+    );
+    console.warn("Lotte bingo sync failed", error);
+  } finally {
+    lotteSyncInFlight = false;
+  }
+}
+
+window.addEventListener("online", async () => {
+  setLotteSyncState("pending", "Internet terug - bingokaart wordt gesynchroniseerd...");
+  if (supabaseClient && authUser && !remoteTrip) await loadRemoteState();
+  await syncLottePassport();
+});
+
+window.addEventListener("offline", () => {
+  setLotteSyncState("offline", "Offline bewaard - synchroniseert zodra internet terug is.");
+});
 
 function renderLotte() {
   const items = [
@@ -4849,11 +5215,15 @@ function renderLotte() {
     "Mooiste camperfoto gemaakt",
   ];
 
-  const saved = JSON.parse(localStorage.getItem("lotte_items") || "{}");
+  const saved = getLocalLotteItems();
   const open = JSON.parse(localStorage.getItem("lotte_open") || "{}");
   const canEdit = canEditLottePassport();
 
   document.getElementById("lotteList").innerHTML = `
+    <div id="lotteSyncStatus" class="lotte-sync-status ${lotteSyncState.status}" role="status">
+      <span class="lotte-sync-dot" aria-hidden="true"></span>
+      <span>${escapeHtml(lotteSyncState.message)}</span>
+    </div>
     <div class="lotte-list">
       ${items
         .map((item, index) => {
@@ -4873,7 +5243,7 @@ function renderLotte() {
               ${
                 data.checked
                   ? `<div class="lotte-summary">
-                      ${data.photo ? "Foto " : ""}
+                      ${data.photo || data.photoStored || data.photoPath ? "Foto " : ""}
                       ${data.note ? "Verhaal " : ""}
                       ${data.score ? "*".repeat(Number(data.score)) : ""}
                     </div>`
@@ -4892,12 +5262,25 @@ function renderLotte() {
                           : ""
                       }
 
-                      ${data.photo ? `<img class="lotte-photo" src="${data.photo}" alt="Foto">` : ""}
+                      ${
+                        data.photo || data.photoStored || data.photoPath
+                          ? `<img
+                              class="lotte-photo loading"
+                              data-lotte-photo-index="${index}"
+                              src="${escapeHtml(
+                                data.photo ||
+                                  lotteRemotePhotoUrls[index] ||
+                                  "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs="
+                              )}"
+                              alt="Foto bij ${escapeHtml(item)}"
+                            >`
+                          : ""
+                      }
 
                       ${
                         canEdit
                           ? `<label>Vertel iets over wat je hebt gezien:
-                              <textarea onchange="saveLotteItem(${index}, 'note', this.value)" placeholder="Vertel iets over wat je hebt gezien...">${data.note || ""}</textarea>
+                              <textarea oninput="saveLotteItem(${index}, 'note', this.value, false)" placeholder="Vertel iets over wat je hebt gezien...">${escapeHtml(data.note || "")}</textarea>
                             </label>
 
                             <label>Score:
@@ -4921,6 +5304,8 @@ function renderLotte() {
         .join("")}
     </div>
   `;
+  requestAnimationFrame(() => hydrateLottePhotoPreviews());
+  migrateLegacyLottePhotos();
 }
 
 function render() {
