@@ -1810,7 +1810,19 @@ function getStageDiary(index) {
 
 function normalizeDiaryPhoto(photo) {
   if (typeof photo === "string") {
-    return { src: photo, caption: "", takenAt: "", uploadedAt: "", projection: "flat", file: null, width: 0, height: 0 };
+    return {
+      src: photo,
+      caption: "",
+      takenAt: "",
+      uploadedAt: "",
+      projection: "flat",
+      file: null,
+      width: 0,
+      height: 0,
+      fileName: "",
+      fileSize: 0,
+      fileLastModified: 0,
+    };
   }
   return {
     src: photo?.src || photo?.url || "",
@@ -1821,6 +1833,9 @@ function normalizeDiaryPhoto(photo) {
     file: photo?.file || null,
     width: Number(photo?.width || 0),
     height: Number(photo?.height || 0),
+    fileName: photo?.fileName || photo?.file_name || "",
+    fileSize: Number(photo?.fileSize || photo?.file_size || 0),
+    fileLastModified: Number(photo?.fileLastModified || photo?.file_last_modified || 0),
     mediaId: photo?.mediaId || photo?.media_id || "",
     storagePath: photo?.storagePath || photo?.storage_path || "",
   };
@@ -1844,6 +1859,44 @@ function getDiaryPhotoTakenAt(photo) {
 
 function getDiaryPhotoItems(entry) {
   return (entry.photos || []).map(normalizeDiaryPhoto).filter((photo) => photo.src);
+}
+
+function getDiaryPhotoFingerprint(photo) {
+  const item = normalizeDiaryPhoto(photo);
+  const file = item.file;
+  const fileName = file?.name || item.fileName || "";
+  const fileSize = file?.size || item.fileSize || "";
+  const lastModified = file?.lastModified || item.fileLastModified || "";
+  return [
+    item.takenAt || "",
+    item.width || "",
+    item.height || "",
+    fileName.toLowerCase(),
+    fileSize,
+    lastModified,
+  ].join("|");
+}
+
+function getSavedDiaryPhotoFingerprint(item, entry) {
+  const photo = normalizeDiaryPhoto(item);
+  const storageName = String(photo.storagePath || "").split("/").pop() || "";
+  return [
+    photo.takenAt || getTripDateKey(entry?.diaryDate || "") || "",
+    photo.width || "",
+    photo.height || "",
+    photo.caption || "",
+    storageName.replace(/^kind-\d+/i, ""),
+  ].join("|").toLowerCase();
+}
+
+function uniqueDiaryPhotos(photos) {
+  const seen = new Set();
+  return photos.filter((photo) => {
+    const key = getDiaryPhotoFingerprint(photo);
+    if (!key.trim() || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function getDiaryCommentKey(stageIndex, entryId) {
@@ -2173,6 +2226,9 @@ async function prepareDiaryPhoto(file, projection = "flat", takenAt = "") {
       projection,
       width: image.naturalWidth,
       height: image.naturalHeight,
+      fileName: file.name || uploadFile.name || "",
+      fileSize: file.size || uploadFile.size || 0,
+      fileLastModified: file.lastModified || uploadFile.lastModified || 0,
     };
   } catch (error) {
     URL.revokeObjectURL(previewUrl);
@@ -2193,6 +2249,7 @@ async function handleDiaryArchivePhotos(input) {
 
   const preparedPhotos = [];
   const skippedFiles = [];
+  const seenUploadFingerprints = new Set();
 
   try {
     for (const file of files) {
@@ -2203,6 +2260,13 @@ async function handleDiaryArchivePhotos(input) {
         continue;
       }
       const photo = await prepareDiaryPhoto(file, "flat", takenAt);
+      const fingerprint = getDiaryPhotoFingerprint(photo);
+      if (seenUploadFingerprints.has(fingerprint)) {
+        skippedFiles.push(file.name);
+        URL.revokeObjectURL(photo.src);
+        continue;
+      }
+      seenUploadFingerprints.add(fingerprint);
       preparedPhotos.push({ diaryDate, photo });
     }
 
@@ -2256,7 +2320,7 @@ async function handleDiaryArchivePhotos(input) {
       message:
         `${preparedPhotos.length} foto${preparedPhotos.length === 1 ? "" : "'s"} toegevoegd aan ${dayCount} ` +
         `${dayCount === 1 ? "datum" : "datums"}.` +
-        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen omdat de opnamedatum niet kon worden gelezen.` : ""),
+        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen omdat ze dubbel waren of geen opnamedatum hadden.` : ""),
     };
   } catch (error) {
     if (isCloudMode() && remoteTrip) await loadRemoteDiary();
@@ -2286,9 +2350,13 @@ async function handleDiaryPhotos(input, projection = "flat") {
 
   try {
     const photos = await Promise.all(files.map((file) => prepareDiaryPhoto(file, projection)));
-    diaryDraft.photos = diaryDraft.photos.concat(photos);
+    const uniquePhotos = uniqueDiaryPhotos(diaryDraft.photos.concat(photos));
+    const skipped = diaryDraft.photos.length + photos.length - uniquePhotos.length;
+    diaryDraft.photos = uniquePhotos;
     const label = projection === "equirectangular" ? "360-foto" : "foto";
-    diaryDraft.status = `${photos.length} ${label}${photos.length === 1 ? "" : "'s"} klaar om toe te voegen.`;
+    diaryDraft.status =
+      `${uniquePhotos.length} ${label}${uniquePhotos.length === 1 ? "" : "'s"} klaar om toe te voegen.` +
+      (skipped ? ` ${skipped} dubbele foto${skipped === 1 ? "" : "'s"} overgeslagen.` : "");
   } catch (error) {
     diaryDraft.status = `Foto toevoegen lukte niet: ${error.message}`;
   } finally {
@@ -4017,14 +4085,33 @@ function getAllDiaryPhotos() {
           uploadedAt: photo.uploadedAt || entry.createdAt || "",
           author: entry.author || "Reiziger",
           note: photo.caption || entry.note || entry.transcript || "",
+          mediaId: photo.mediaId || "",
+          storagePath: photo.storagePath || "",
         };
       })
     )
-  ).sort((left, right) => {
+  )
+    .sort((left, right) => {
     const leftTime = Date.parse(left.takenAt || left.uploadedAt || left.createdAt || "") || 0;
     const rightTime = Date.parse(right.takenAt || right.uploadedAt || right.createdAt || "") || 0;
     return rightTime - leftTime;
-  });
+  })
+    .filter((item, index, photos) => {
+      const key = getTravelPhotoDuplicateKey(item);
+      if (!key) return true;
+      return photos.findIndex((candidate) => getTravelPhotoDuplicateKey(candidate) === key) === index;
+    });
+}
+
+function getTravelPhotoDuplicateKey(item) {
+  if (!item.takenAt) return "";
+  return [
+    item.diaryDate || "",
+    item.takenAt || "",
+    item.author || "",
+    item.note || "",
+    item.projection || "",
+  ].join("|").toLowerCase();
 }
 
 function getGroupedDiaryPhotos() {

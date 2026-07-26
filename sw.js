@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v70-photo-date-groups";
+const CACHE_NAME = "rondreis-noorwegen-2026-v71-photo-dedup";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260726-photo-date-groups",
-  "./app.js?v=20260726-photo-date-groups",
+  "./style.css?v=20260726-photo-dedup",
+  "./app.js?v=20260726-photo-dedup",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260726-photo-date-groups",
+  "./data/stages.js?v=20260726-photo-dedup",
   "./data/app-config.public.js",
   "./assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline",
   "./assets/images/scandinavia-map-hero.png",
