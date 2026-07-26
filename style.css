@@ -1592,6 +1592,30 @@ button:hover,
   font-weight: 850;
 }
 
+.travel-photo-day {
+  display: grid;
+  gap: 10px;
+}
+
+.travel-photo-day-head {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+  justify-content: space-between;
+  padding-top: 4px;
+}
+
+.travel-photo-day-head h3 {
+  margin: 0;
+  color: var(--text);
+}
+
+.travel-photo-day-head span {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 850;
+}
+
 .travel-photo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

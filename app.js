@@ -1766,7 +1766,8 @@ function getStageDiary(index) {
               ? {
                   src: item.url,
                   caption: item.caption || "",
-                  takenAt: item.taken_at || item.created_at || "",
+                  takenAt: item.taken_at || "",
+                  uploadedAt: item.created_at || "",
                   projection:
                     item.projection === "equirectangular" || /-360\.[a-z0-9]+$/i.test(item.storage_path || "")
                       ? "equirectangular"
@@ -1809,12 +1810,13 @@ function getStageDiary(index) {
 
 function normalizeDiaryPhoto(photo) {
   if (typeof photo === "string") {
-    return { src: photo, caption: "", takenAt: "", projection: "flat", file: null, width: 0, height: 0 };
+    return { src: photo, caption: "", takenAt: "", uploadedAt: "", projection: "flat", file: null, width: 0, height: 0 };
   }
   return {
     src: photo?.src || photo?.url || "",
     caption: photo?.caption || "",
     takenAt: photo?.takenAt || photo?.taken_at || "",
+    uploadedAt: photo?.uploadedAt || photo?.uploaded_at || "",
     projection: photo?.projection === "equirectangular" ? "equirectangular" : "flat",
     file: photo?.file || null,
     width: Number(photo?.width || 0),
@@ -4002,22 +4004,54 @@ function getDiaryEntriesByDate(dateKey) {
 function getAllDiaryPhotos() {
   return STAGES.flatMap((_, stageIndex) =>
     getStageDiary(stageIndex).flatMap((entry) =>
-      getDiaryPhotoItems(entry).map((photo) => ({
-        photo: photo.src,
-        projection: photo.projection,
-        stageIndex,
-        diaryDate: getTripDateKey(getDiaryPhotoTakenAt(photo)) || getDiaryEntryDate(entry, stageIndex),
-        created: entry.created,
-        takenAt: getDiaryPhotoTakenAt(photo) || "",
-        author: entry.author || "Reiziger",
-        note: photo.caption || entry.note || entry.transcript || "",
-      }))
+      getDiaryPhotoItems(entry).map((photo) => {
+        const takenAt = getDiaryPhotoTakenAt(photo) || "";
+        return {
+          photo: photo.src,
+          projection: photo.projection,
+          stageIndex,
+          diaryDate: getTripDateKey(takenAt) || getDiaryEntryDate(entry, stageIndex),
+          created: entry.created,
+          createdAt: entry.createdAt || "",
+          takenAt,
+          uploadedAt: photo.uploadedAt || entry.createdAt || "",
+          author: entry.author || "Reiziger",
+          note: photo.caption || entry.note || entry.transcript || "",
+        };
+      })
     )
   ).sort((left, right) => {
-    const leftTime = Date.parse(left.takenAt || left.created || "") || 0;
-    const rightTime = Date.parse(right.takenAt || right.created || "") || 0;
+    const leftTime = Date.parse(left.takenAt || left.uploadedAt || left.createdAt || "") || 0;
+    const rightTime = Date.parse(right.takenAt || right.uploadedAt || right.createdAt || "") || 0;
     return rightTime - leftTime;
   });
+}
+
+function getGroupedDiaryPhotos() {
+  return getAllDiaryPhotos().reduce((groups, photo) => {
+    const key = photo.diaryDate || getTodayDiaryDate();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(photo);
+    return groups;
+  }, new Map());
+}
+
+function formatPhotoDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString("nl-NL", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function getTravelPhotoTimeLabel(item) {
+  const taken = formatPhotoDateTime(item.takenAt);
+  if (taken) return `Gemaakt ${taken}`;
+  const uploaded = formatPhotoDateTime(item.uploadedAt || item.createdAt);
+  return uploaded ? `Geupload ${uploaded}` : item.created || "";
 }
 
 function getDiaryPhotoIssueCount() {
@@ -4037,6 +4071,7 @@ function getDiaryPhotoIssueCount() {
 
 function renderTravelPhotoGallery() {
   const photos = getAllDiaryPhotos();
+  const groupedPhotos = getGroupedDiaryPhotos();
   const issueCount = getDiaryPhotoIssueCount();
   return `
     <section class="card travel-photo-panel">
@@ -4049,29 +4084,41 @@ function renderTravelPhotoGallery() {
       </div>
       ${
         photos.length
-          ? `<div class="travel-photo-grid">
-              ${photos
-                .map(
-                  (item) => `
-                    <figure class="travel-photo-item">
-                      ${renderDiaryPhotoVisual(
-                        {
-                          src: item.photo,
-                          caption: item.note,
-                          projection: item.projection,
-                        },
-                        `Reisfoto van ${formatDiaryDate(item.diaryDate)}`
-                      )}
-                      <figcaption>
-                        <b>${formatDiaryDate(item.diaryDate)}</b>
-                        <span>${item.created}${item.author ? ` - ${item.author}` : ""}</span>
-                        ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
-                      </figcaption>
-                    </figure>
-                  `
-                )
-                .join("")}
-            </div>`
+          ? Array.from(groupedPhotos.entries())
+              .map(
+                ([dateKey, datePhotos]) => `
+                  <section class="travel-photo-day">
+                    <div class="travel-photo-day-head">
+                      <h3>${formatDiaryDate(dateKey)}</h3>
+                      <span>${datePhotos.length} foto${datePhotos.length === 1 ? "" : "'s"}</span>
+                    </div>
+                    <div class="travel-photo-grid">
+                      ${datePhotos
+                        .map(
+                          (item) => `
+                            <figure class="travel-photo-item">
+                              ${renderDiaryPhotoVisual(
+                                {
+                                  src: item.photo,
+                                  caption: item.note,
+                                  projection: item.projection,
+                                },
+                                `Reisfoto van ${formatDiaryDate(item.diaryDate)}`
+                              )}
+                              <figcaption>
+                                <b>${getTravelPhotoTimeLabel(item)}</b>
+                                <span>${item.author || "Reiziger"}</span>
+                                ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
+                              </figcaption>
+                            </figure>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                  </section>
+                `
+              )
+              .join("")
           : `<p class="muted">${
               issueCount
                 ? `${issueCount} herinnering${issueCount === 1 ? "" : "en"} gevonden, maar daar hangt nog geen laadbare foto aan. Controleer Supabase Storage of upload de foto opnieuw.`
