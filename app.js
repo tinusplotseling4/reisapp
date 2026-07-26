@@ -2244,84 +2244,105 @@ async function handleDiaryArchivePhotos(input) {
 
   diaryArchiveUploadState = {
     loading: true,
-    message: `${files.length} foto${files.length === 1 ? "" : "'s"} worden op datum ingedeeld...`,
+    message: `${files.length} foto${files.length === 1 ? "" : "'s"} worden geupload...`,
   };
   renderDiaryPanel();
 
-  const preparedPhotos = [];
   const skippedFiles = [];
   const seenUploadFingerprints = new Set();
+  const localGroups = new Map();
+  const remoteEntryByDate = new Map();
+  let uploadedCount = 0;
 
   try {
-    for (const file of files) {
-      const takenAt = await readDiaryPhotoTakenAt(file);
-      const diaryDate = getTripDateKey(takenAt);
-      if (!diaryDate) {
-        skippedFiles.push(file.name);
-        continue;
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index];
+      try {
+        const takenAt = await readDiaryPhotoTakenAt(file);
+        const diaryDate = getTripDateKey(takenAt);
+        if (!diaryDate) {
+          skippedFiles.push(file.name);
+          continue;
+        }
+
+        const photo = {
+          src: "",
+          file,
+          caption: "",
+          takenAt,
+          projection: "flat",
+          width: 0,
+          height: 0,
+          fileName: file.name || "",
+          fileSize: file.size || 0,
+          fileLastModified: file.lastModified || 0,
+        };
+        const fingerprint = getDiaryPhotoFingerprint(photo);
+        if (seenUploadFingerprints.has(fingerprint)) {
+          skippedFiles.push(file.name);
+          continue;
+        }
+        seenUploadFingerprints.add(fingerprint);
+
+        const stageIndex = getLegacyStageIndexForDiaryDate(diaryDate);
+        if (isCloudMode() && remoteTrip && authUser) {
+          let entry = remoteEntryByDate.get(diaryDate);
+          if (!entry) {
+            const { data, error } = await supabaseClient
+              .from("diary_entries")
+              .insert({
+                trip_id: remoteTrip.id,
+                stage_index: stageIndex,
+                diary_date: diaryDate,
+                user_id: authUser.id,
+                note: "",
+                transcript: "",
+              })
+              .select("*")
+              .single();
+            if (error) throw error;
+            entry = data;
+            remoteEntryByDate.set(diaryDate, entry);
+          }
+
+          const mediaRows = await uploadDiaryFiles(stageIndex, [photo], "photo");
+          await attachDiaryMedia(entry.id, mediaRows);
+        } else {
+          if (!localGroups.has(diaryDate)) localGroups.set(diaryDate, []);
+          localGroups.get(diaryDate).push({
+            ...photo,
+            src: await blobToDataUrl(file),
+            file: null,
+          });
+        }
+
+        uploadedCount++;
+      } catch (error) {
+        skippedFiles.push(`${file.name}: ${error.message}`);
       }
-      const photo = await prepareDiaryPhoto(file, "flat", takenAt);
-      const fingerprint = getDiaryPhotoFingerprint(photo);
-      if (seenUploadFingerprints.has(fingerprint)) {
-        skippedFiles.push(file.name);
-        URL.revokeObjectURL(photo.src);
-        continue;
-      }
-      seenUploadFingerprints.add(fingerprint);
-      preparedPhotos.push({ diaryDate, photo });
+
+      diaryArchiveUploadState.message =
+        `${Math.min(index + 1, files.length)} van ${files.length} foto${files.length === 1 ? "" : "'s"} verwerkt... ` +
+        `${uploadedCount} opgeslagen.`;
+      renderDiaryPanel();
     }
 
-    if (!preparedPhotos.length) {
-      throw new Error("Van geen van de foto's kon een geldige opnamedatum worden gevonden.");
-    }
-
-    const groups = new Map();
-    preparedPhotos.forEach(({ diaryDate, photo }) => {
-      if (!groups.has(diaryDate)) groups.set(diaryDate, []);
-      groups.get(diaryDate).push(photo);
-    });
-
-    for (const [diaryDate, photos] of groups) {
-      const stageIndex = getLegacyStageIndexForDiaryDate(diaryDate);
-      if (isCloudMode() && remoteTrip && authUser) {
-        const mediaRows = await uploadDiaryFiles(stageIndex, photos, "photo");
-        const { data: entry, error } = await supabaseClient
-          .from("diary_entries")
-          .insert({
-            trip_id: remoteTrip.id,
-            stage_index: stageIndex,
-            diary_date: diaryDate,
-            user_id: authUser.id,
-            note: "",
-            transcript: "",
-          })
-          .select("*")
-          .single();
-        if (error) throw error;
-        await attachDiaryMedia(entry.id, mediaRows);
-      } else {
-        const localPhotos = await Promise.all(
-          photos.map(async (photo) => {
-            const item = normalizeDiaryPhoto(photo);
-            return {
-              ...item,
-              src: item.file ? await blobToDataUrl(item.file) : item.src,
-              file: null,
-            };
-          })
-        );
-        addDiaryEntry(stageIndex, { diaryDate, photos: localPhotos });
-      }
+    for (const [diaryDate, photos] of localGroups) {
+      addDiaryEntry(getLegacyStageIndexForDiaryDate(diaryDate), { diaryDate, photos });
     }
 
     if (isCloudMode() && remoteTrip) await loadRemoteDiary();
-    const dayCount = groups.size;
+    const dayCount = new Set([
+      ...Array.from(remoteEntryByDate.keys()),
+      ...Array.from(localGroups.keys()),
+    ]).size;
     diaryArchiveUploadState = {
       loading: false,
       message:
-        `${preparedPhotos.length} foto${preparedPhotos.length === 1 ? "" : "'s"} toegevoegd aan ${dayCount} ` +
-        `${dayCount === 1 ? "datum" : "datums"}.` +
-        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen omdat ze dubbel waren of geen opnamedatum hadden.` : ""),
+        `${uploadedCount} foto${uploadedCount === 1 ? "" : "'s"} toegevoegd` +
+        (dayCount ? ` aan ${dayCount} ${dayCount === 1 ? "datum" : "datums"}` : "") +
+        "." +
+        (skippedFiles.length ? ` ${skippedFiles.length} foto${skippedFiles.length === 1 ? "" : "'s"} overgeslagen of mislukt.` : ""),
     };
   } catch (error) {
     if (isCloudMode() && remoteTrip) await loadRemoteDiary();
@@ -2330,10 +2351,6 @@ async function handleDiaryArchivePhotos(input) {
       message: `Foto's toevoegen lukte niet: ${error.message}`,
     };
   } finally {
-    preparedPhotos.forEach(({ photo }) => {
-      const src = normalizeDiaryPhoto(photo).src;
-      if (src.startsWith("blob:")) URL.revokeObjectURL(src);
-    });
     input.value = "";
     renderDiaryPanel();
     renderStages();
