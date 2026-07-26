@@ -148,6 +148,7 @@ let diaryArchiveUploadState = {
   loading: false,
   message: "",
 };
+let travelPhotoDedupTimer = null;
 let openDiaryDays = new Set();
 
 function getConfig() {
@@ -2699,6 +2700,7 @@ function renderDashboardOnly() {
   if (!summary || !document.getElementById("map")?.classList.contains("active")) return;
   resetDashboardRoute();
   summary.innerHTML = renderDashboard();
+  scheduleTravelPhotoVisualDedup();
   setTimeout(() => {
     initDashboardRoute();
     startContinuousGpsWatch();
@@ -4198,6 +4200,81 @@ function renderTravelPhotoGallery() {
       }
     </section>
   `;
+}
+
+function scheduleTravelPhotoVisualDedup() {
+  if (travelPhotoDedupTimer) clearTimeout(travelPhotoDedupTimer);
+  travelPhotoDedupTimer = setTimeout(dedupeVisibleTravelPhotos, 600);
+}
+
+function waitForImageReady(image) {
+  if (image.complete && image.naturalWidth) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", reject, { once: true });
+  });
+}
+
+async function getImageVisualHash(src) {
+  const image = new Image();
+  image.crossOrigin = "anonymous";
+  image.decoding = "async";
+  image.src = src;
+  await waitForImageReady(image);
+
+  const size = 16;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const context = canvas.getContext("2d", { willReadFrequently: true });
+  if (!context) return "";
+
+  context.drawImage(image, 0, 0, size, size);
+  const data = context.getImageData(0, 0, size, size).data;
+  const values = [];
+  for (let index = 0; index < data.length; index += 4) {
+    values.push(data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114);
+  }
+  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+  return values.map((value) => (value >= average ? "1" : "0")).join("");
+}
+
+function getHashDistance(left, right) {
+  if (!left || !right || left.length !== right.length) return Infinity;
+  let distance = 0;
+  for (let index = 0; index < left.length; index++) {
+    if (left[index] !== right[index]) distance++;
+  }
+  return distance;
+}
+
+async function dedupeVisibleTravelPhotos() {
+  const days = Array.from(document.querySelectorAll(".travel-photo-day"));
+  for (const day of days) {
+    const seen = [];
+    const items = Array.from(day.querySelectorAll(".travel-photo-item"));
+    for (const item of items) {
+      const image = item.querySelector("img");
+      if (!image?.src) continue;
+
+      try {
+        const hash = await getImageVisualHash(image.src);
+        const duplicate = seen.some((seenHash) => getHashDistance(seenHash, hash) <= 4);
+        if (duplicate) {
+          item.hidden = true;
+        } else {
+          seen.push(hash);
+          item.hidden = false;
+        }
+      } catch (_error) {
+        item.hidden = false;
+      }
+    }
+
+    const visibleCount = items.filter((item) => !item.hidden).length;
+    const countLabel = day.querySelector(".travel-photo-day-head span");
+    if (countLabel) countLabel.textContent = `${visibleCount} foto${visibleCount === 1 ? "" : "'s"}`;
+  }
 }
 
 function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
@@ -5815,6 +5892,7 @@ function render() {
 
   resetDashboardRoute();
   document.getElementById("summary").innerHTML = renderDashboard();
+  scheduleTravelPhotoVisualDedup();
   setTimeout(() => {
     initDashboardRoute();
     startContinuousGpsWatch();
