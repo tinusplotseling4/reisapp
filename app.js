@@ -94,6 +94,9 @@ let dashboardTrackLine;
 let dashboardFollowLive = localStorage.getItem("reisapp_dashboard_follow") !== "false";
 let dashboardProgrammaticMove = false;
 let gpsStatus = localStorage.getItem("reisapp_gps_status") || "Nog geen GPS-punt gemeten op dit apparaat.";
+let lastAutoGpsMeasureAt = 0;
+const GPS_AUTO_MEASURE_COOLDOWN_MS = 60000;
+const GPS_OPEN_UPDATE_INTERVAL_MS = 60000;
 let fuelType = localStorage.getItem("reisapp_fuel_type") || "diesel";
 let fuelLookupState = {
   stageIndex: null,
@@ -118,7 +121,9 @@ let weatherState = {
 };
 let locationTimer;
 let locationWatchId = null;
+let appOpenGpsTimer;
 let gpsRefreshTimer;
+let wakeLockSentinel = null;
 let diaryDraft = {
   stageIndex: null,
   diaryDate: "",
@@ -1447,7 +1452,12 @@ function showTab(id, options = {}) {
     initTotalRoute();
     renderTotalRouteHighlights();
   }
-  if (targetId === "map") initDashboardRoute();
+  if (targetId === "map") {
+    initDashboardRoute();
+    startContinuousGpsWatch();
+    autoMeasureGpsOnAppOpen();
+    requestScreenWakeLock();
+  }
   if (targetId === "weather") {
     renderWeatherPanel();
     loadLiveWeather();
@@ -2619,7 +2629,12 @@ function renderDashboardOnly() {
   if (!summary || !document.getElementById("map")?.classList.contains("active")) return;
   resetDashboardRoute();
   summary.innerHTML = renderDashboard();
-  setTimeout(initDashboardRoute, 0);
+  setTimeout(() => {
+    initDashboardRoute();
+    startContinuousGpsWatch();
+    autoMeasureGpsOnAppOpen();
+    requestScreenWakeLock();
+  }, 0);
 }
 
 function getTravelArchiveData() {
@@ -3233,7 +3248,9 @@ function getFallbackRouteBounds() {
 }
 
 function getTrackLatLngs(track = getSavedTrack()) {
-  return track.map((item) => [item.lat, item.lon]);
+  return track
+    .filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lon))
+    .map((item) => [item.lat, item.lon]);
 }
 
 function getDashboardBounds() {
@@ -3543,21 +3560,48 @@ async function renderTotalRoute() {
 }
 
 function getSavedTrack() {
-  if (isCloudMode() && remoteTrip && remoteGpsPoints.length) {
-    return remoteGpsPoints.map((point) => ({
+  let localTrack = [];
+  try {
+    localTrack = JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
+  } catch (_error) {
+    localTrack = [];
+  }
+
+  if (!Array.isArray(localTrack)) localTrack = [];
+
+  const sharedTrack = isCloudMode() && remoteTrip
+    ? remoteGpsPoints.map((point) => ({
       lat: point.lat,
       lon: point.lon,
       accuracy: point.accuracy_m || 0,
       time: new Date(point.recorded_at).getTime(),
       userId: point.user_id,
-    }));
-  }
+    }))
+    : [];
 
-  return JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
+  const seen = new Set();
+  return [...localTrack, ...sharedTrack]
+    .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lon) && Number.isFinite(point.time))
+    .sort((a, b) => a.time - b.time)
+    .filter((point) => {
+      const key = `${point.userId || "local"}:${point.time}:${point.lat.toFixed(6)}:${point.lon.toFixed(6)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(-1200);
 }
 
 async function saveTrackPoint(point) {
-  const localTrack = JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
+  let localTrack = [];
+  try {
+    localTrack = JSON.parse(localStorage.getItem("reisapp_live_track") || "[]");
+  } catch (_error) {
+    localTrack = [];
+  }
+
+  if (!Array.isArray(localTrack)) localTrack = [];
+
   localTrack.push(point);
   localStorage.setItem("reisapp_live_track", JSON.stringify(localTrack.slice(-1200)));
 
@@ -3696,7 +3740,17 @@ function renderHeroTrackOverlay() {
   `;
 }
 
-function updateLivePosition(shouldFollow = false) {
+function getGpsErrorMessage(error) {
+  const messages = {
+    1: "GPS-toegang is geweigerd. Zet locatie aan voor deze app/site in je telefooninstellingen.",
+    2: "Je telefoon kon nu geen GPS-positie bepalen. Probeer buiten of met beter bereik.",
+    3: "GPS duurde te lang. Probeer nogmaals met de app open in beeld.",
+  };
+  return messages[error.code] || "GPS-toegang is geweigerd of niet beschikbaar.";
+}
+
+function updateLivePosition(options = {}) {
+  const normalizedOptions = typeof options === "boolean" ? { shouldFollow: options } : options;
   if (!navigator.geolocation) {
     setGpsStatus("GPS is niet beschikbaar in deze browser.");
     return Promise.resolve(false);
@@ -3712,16 +3766,10 @@ function updateLivePosition(shouldFollow = false) {
   return new Promise((resolve) => {
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        await saveBrowserPosition(position, shouldFollow);
-        resolve(true);
+        resolve(await saveBrowserPosition(position, normalizedOptions));
       },
       (error) => {
-        const messages = {
-          1: "GPS-toegang is geweigerd. Zet locatie aan voor deze app/site in je telefooninstellingen.",
-          2: "Je telefoon kon nu geen GPS-positie bepalen. Probeer buiten of met beter bereik.",
-          3: "GPS duurde te lang. Probeer nogmaals met de app open in beeld.",
-        };
-        setGpsStatus(messages[error.code] || "GPS-toegang is geweigerd of niet beschikbaar.");
+        setGpsStatus(getGpsErrorMessage(error));
         resolve(false);
       },
       {
@@ -3733,12 +3781,21 @@ function updateLivePosition(shouldFollow = false) {
   });
 }
 
-async function saveBrowserPosition(position, shouldFollow = false) {
+async function saveBrowserPosition(position, options = {}) {
+  const normalizedOptions = typeof options === "boolean" ? { shouldFollow: options } : options;
+  const automatic = Boolean(normalizedOptions.automatic);
+  const force = normalizedOptions.force !== false;
+  const shouldFollow = Boolean(normalizedOptions.shouldFollow || automatic);
+  const now = Date.now();
+
+  if (!force && now - lastAutoGpsMeasureAt < GPS_AUTO_MEASURE_COOLDOWN_MS) return false;
+  lastAutoGpsMeasureAt = now;
+
   const point = {
     lat: position.coords.latitude,
     lon: position.coords.longitude,
     accuracy: Math.round(position.coords.accuracy || 0),
-    time: Date.now(),
+    time: now,
   };
 
   const saved = await saveTrackPoint(point);
@@ -3754,9 +3811,10 @@ async function saveBrowserPosition(position, shouldFollow = false) {
   }
   setGpsStatus(
     saved.shared
-      ? `GPS-punt gedeeld. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
-      : `GPS-punt gezet op dit apparaat. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+      ? `${automatic ? "Automatisch GPS-punt gedeeld" : "GPS-punt gedeeld"}. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+      : `${automatic ? "Automatisch GPS-punt gezet" : "GPS-punt gezet"} op dit apparaat. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
   );
+  return true;
 }
 
 function stopLocationWatch() {
@@ -3769,24 +3827,71 @@ function stopLocationTracking() {
   if (locationTimer) clearInterval(locationTimer);
   locationTimer = null;
   stopLocationWatch();
+  if (!driving) startContinuousGpsWatch();
+}
+
+function autoMeasureGpsOnAppOpen() {
+  if (!authReady) return;
+  if (document.visibilityState === "hidden") return;
+  if (!canUpdateGps()) return;
+  if (driving) return;
+  const now = Date.now();
+  if (now - lastAutoGpsMeasureAt < GPS_AUTO_MEASURE_COOLDOWN_MS) return;
+  updateLivePosition({ automatic: true, force: false, shouldFollow: true });
+}
+
+function startAppOpenGpsUpdates() {
+  if (appOpenGpsTimer) clearInterval(appOpenGpsTimer);
+  startContinuousGpsWatch();
+  appOpenGpsTimer = setInterval(autoMeasureGpsOnAppOpen, GPS_OPEN_UPDATE_INTERVAL_MS);
+}
+
+function startContinuousGpsWatch() {
+  if (!authReady) return;
+  if (document.visibilityState === "hidden") return;
+  if (!canUpdateGps()) return;
+  if (!navigator.geolocation || !window.isSecureContext) return;
+  if (locationWatchId !== null) return;
+
+  setGpsStatus("Automatische GPS staat aan. De app werkt elke minuut bij zolang hij open is.");
+  locationWatchId = navigator.geolocation.watchPosition(
+    (position) => {
+      saveBrowserPosition(position, { automatic: true, force: false, shouldFollow: true });
+    },
+    (error) => {
+      setGpsStatus(getGpsErrorMessage(error));
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 15000,
+      timeout: 60000,
+    }
+  );
+}
+
+async function requestScreenWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  if (!authReady || (isCloudMode() && !authUser)) return;
+  if (wakeLockSentinel || document.visibilityState === "hidden" || !canUpdateGps()) return;
+
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request("screen");
+    wakeLockSentinel.addEventListener("release", () => {
+      wakeLockSentinel = null;
+    });
+  } catch (_error) {
+    wakeLockSentinel = null;
+  }
 }
 
 function startLocationTracking() {
-  updateLivePosition(true);
+  startContinuousGpsWatch();
+  updateLivePosition({ automatic: true, force: true, shouldFollow: true });
   if (locationTimer) clearInterval(locationTimer);
-  locationTimer = setInterval(updateLivePosition, 300000);
-  stopLocationWatch();
-  if (navigator.geolocation && window.isSecureContext) {
-    locationWatchId = navigator.geolocation.watchPosition(
-      saveBrowserPosition,
-      () => {},
-      {
-        enableHighAccuracy: true,
-        maximumAge: 60000,
-        timeout: 30000,
-      }
-    );
-  }
+  locationTimer = setInterval(
+    () => updateLivePosition({ automatic: true, force: false, shouldFollow: true }),
+    GPS_OPEN_UPDATE_INTERVAL_MS
+  );
 }
 
 function renderStageDots() {
@@ -5592,7 +5697,12 @@ function render() {
 
   resetDashboardRoute();
   document.getElementById("summary").innerHTML = renderDashboard();
-  setTimeout(initDashboardRoute, 0);
+  setTimeout(() => {
+    initDashboardRoute();
+    startContinuousGpsWatch();
+    autoMeasureGpsOnAppOpen();
+    requestScreenWakeLock();
+  }, 0);
   renderDaysWeatherSummary();
   renderStages();
   renderDiaryPanel();
@@ -5639,7 +5749,21 @@ window.addEventListener("beforeinstallprompt", (event) => {
   render();
 });
 
+window.addEventListener("pageshow", () => {
+  startContinuousGpsWatch();
+  autoMeasureGpsOnAppOpen();
+  requestScreenWakeLock();
+});
+
 document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") {
+    startContinuousGpsWatch();
+    autoMeasureGpsOnAppOpen();
+    requestScreenWakeLock();
+  } else {
+    stopLocationWatch();
+  }
+
   if (!document.hidden) refreshDiaryNotifications();
 });
 
@@ -5650,4 +5774,7 @@ if ("serviceWorker" in navigator) {
 }
 
 initAuth();
+startAppOpenGpsUpdates();
+startContinuousGpsWatch();
+requestScreenWakeLock();
 if (driving) startLocationTracking();
