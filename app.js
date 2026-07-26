@@ -4092,26 +4092,10 @@ function getAllDiaryPhotos() {
     )
   )
     .sort((left, right) => {
-    const leftTime = Date.parse(left.takenAt || left.uploadedAt || left.createdAt || "") || 0;
-    const rightTime = Date.parse(right.takenAt || right.uploadedAt || right.createdAt || "") || 0;
-    return rightTime - leftTime;
-  })
-    .filter((item, index, photos) => {
-      const key = getTravelPhotoDuplicateKey(item);
-      if (!key) return true;
-      return photos.findIndex((candidate) => getTravelPhotoDuplicateKey(candidate) === key) === index;
+      const leftTime = Date.parse(left.takenAt || left.uploadedAt || left.createdAt || "") || 0;
+      const rightTime = Date.parse(right.takenAt || right.uploadedAt || right.createdAt || "") || 0;
+      return rightTime - leftTime;
     });
-}
-
-function getTravelPhotoDuplicateKey(item) {
-  if (!item.takenAt) return "";
-  return [
-    item.diaryDate || "",
-    item.takenAt || "",
-    item.author || "",
-    item.note || "",
-    item.projection || "",
-  ].join("|").toLowerCase();
 }
 
 function getGroupedDiaryPhotos() {
