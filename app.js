@@ -4401,6 +4401,11 @@ function renderDiaryPanel() {
       <div class="trip-diary-days">
         ${getDiaryCalendarDates().map((dateKey) => {
           const entries = getDiaryEntriesByDate(dateKey);
+          const photoCount = entries.reduce((total, entry) => total + getDiaryPhotoItems(entry).length, 0);
+          const entryText = entries.length
+            ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}`
+            : "Nog niets toegevoegd";
+          const photoText = photoCount ? `, ${photoCount} foto${photoCount === 1 ? "" : "'s"}` : "";
           const dateBadge = getDiaryDateBadge(dateKey);
           return `
             <details
@@ -4412,7 +4417,7 @@ function renderDiaryPanel() {
                 <span class="day-badge">${dateBadge.top}<br>${dateBadge.bottom}</span>
                 <span class="trip-diary-day-title">
                   <b>${formatDiaryDate(dateKey)}</b>
-                  <small>${entries.length ? `${entries.length} ${entries.length === 1 ? "herinnering" : "herinneringen"}` : "Nog niets toegevoegd"}</small>
+                  <small>${entryText}${photoText}</small>
                 </span>
                 <span class="trip-diary-toggle" aria-hidden="true">+</span>
               </summary>
