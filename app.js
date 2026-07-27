@@ -1547,7 +1547,7 @@ function canMarkVisited() {
 }
 
 function canUpdateGps() {
-  const role = getCurrentRole();
+  const role = getActualRole();
   return role === "admin" || role === "leader" || role === "traveler";
 }
 
@@ -3694,7 +3694,16 @@ async function saveTrackPoint(point) {
   localTrack.push(point);
   localStorage.setItem("reisapp_live_track", JSON.stringify(localTrack.slice(-1200)));
 
-  if (!isCloudMode() || !remoteTrip || !authUser || !canUpdateGps()) return { shared: false };
+  if (!isCloudMode() || !remoteTrip || !authUser || !canUpdateGps()) {
+    return {
+      shared: false,
+      reason: !authUser
+        ? "Je bent niet ingelogd."
+        : !canUpdateGps()
+          ? "Je rol mag geen GPS delen."
+          : "Cloudmodus is niet actief.",
+    };
+  }
 
   const row = {
     trip_id: remoteTrip.id,
@@ -3712,7 +3721,7 @@ async function saveTrackPoint(point) {
     .select("id, user_id, lat, lon, accuracy_m, source, recorded_at")
     .single();
 
-  if (error) return { shared: false, error };
+  if (error) return { shared: false, error, reason: error.message };
   remoteGpsPoints = [...remoteGpsPoints, data].slice(-1200);
   loadLiveWeather(true);
   return { shared: true };
@@ -3901,6 +3910,8 @@ async function saveBrowserPosition(position, options = {}) {
   setGpsStatus(
     saved.shared
       ? `${automatic ? "Automatisch GPS-punt gedeeld" : "GPS-punt gedeeld"}. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
+      : saved.reason
+        ? `${automatic ? "Automatisch GPS-punt niet gedeeld" : "GPS-punt niet gedeeld"}: ${saved.reason}`
       : `${automatic ? "Automatisch GPS-punt gezet" : "GPS-punt gezet"} op dit apparaat. Nauwkeurigheid ongeveer ${point.accuracy} meter.`
   );
   return true;

@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v75-photo-upload-progress";
+const CACHE_NAME = "rondreis-noorwegen-2026-v76-gps-actual-role";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260726-photo-upload-progress",
-  "./app.js?v=20260726-photo-upload-progress",
+  "./style.css?v=20260727-gps-actual-role",
+  "./app.js?v=20260727-gps-actual-role",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260726-photo-upload-progress",
+  "./data/stages.js?v=20260727-gps-actual-role",
   "./data/app-config.public.js",
   "./assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline",
   "./assets/images/scandinavia-map-hero.png",
