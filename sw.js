@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v76-gps-actual-role";
+const CACHE_NAME = "rondreis-noorwegen-2026-v77-panorama-blob-loader";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260727-gps-actual-role",
-  "./app.js?v=20260727-gps-actual-role",
+  "./style.css?v=20260727-panorama-blob-loader",
+  "./app.js?v=20260727-panorama-blob-loader",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260727-gps-actual-role",
+  "./data/stages.js?v=20260727-panorama-blob-loader",
   "./data/app-config.public.js",
   "./assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline",
   "./assets/images/scandinavia-map-hero.png",

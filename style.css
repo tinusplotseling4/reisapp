@@ -1781,6 +1781,26 @@ button:hover,
   background: #000;
 }
 
+.panorama-loading,
+.panorama-error {
+  display: grid;
+  min-height: 100%;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: #fff;
+  text-align: center;
+}
+
+.panorama-error {
+  color: var(--gold);
+}
+
+.panorama-error span {
+  color: #dce9f6;
+  font-weight: 750;
+}
+
 .diary-photo-grid img,
 .diary-photo-draft img {
   width: 100%;

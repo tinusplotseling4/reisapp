@@ -144,6 +144,7 @@ let diaryRecognition;
 let diaryCommentDrafts = {};
 let deferredInstallPrompt = null;
 let panoramaViewer = null;
+let panoramaObjectUrl = "";
 let diaryArchiveUploadState = {
   loading: false,
   message: "",
@@ -2463,7 +2464,29 @@ function openPanoramaFromButton(button) {
   openPanorama(button.dataset.panoramaSrc || "", button.dataset.panoramaCaption || "");
 }
 
-function openPanorama(src, caption = "") {
+function clearPanoramaObjectUrl() {
+  if (!panoramaObjectUrl) return;
+  URL.revokeObjectURL(panoramaObjectUrl);
+  panoramaObjectUrl = "";
+}
+
+async function getPanoramaViewerSource(src) {
+  if (src.startsWith("blob:") || src.startsWith("data:")) return src;
+
+  const response = await fetch(src, {
+    cache: "no-store",
+    credentials: "omit",
+  });
+  if (!response.ok) throw new Error("De 360-foto kon niet worden opgehaald.");
+
+  const blob = await response.blob();
+  if (!blob.size) throw new Error("De 360-foto is leeg of verlopen.");
+  clearPanoramaObjectUrl();
+  panoramaObjectUrl = URL.createObjectURL(blob);
+  return panoramaObjectUrl;
+}
+
+async function openPanorama(src, caption = "") {
   const dialog = document.getElementById("panoramaDialog");
   const container = document.getElementById("panoramaViewer");
   const title = document.getElementById("panoramaTitle");
@@ -2476,7 +2499,9 @@ function openPanorama(src, caption = "") {
   }
 
   if (panoramaViewer?.destroy) panoramaViewer.destroy();
-  container.innerHTML = "";
+  panoramaViewer = null;
+  clearPanoramaObjectUrl();
+  container.innerHTML = `<div class="panorama-loading">360-foto wordt geladen...</div>`;
   if (title) title.textContent = caption || "360-foto";
   if (typeof dialog.showModal === "function") {
     dialog.showModal();
@@ -2484,21 +2509,33 @@ function openPanorama(src, caption = "") {
     dialog.setAttribute("open", "");
   }
 
-  panoramaViewer = window.pannellum.viewer(container, {
-    type: "equirectangular",
-    panorama: src,
-    autoLoad: true,
-    showControls: true,
-    showFullscreenCtrl: true,
-    orientationOnByDefault: false,
-    title: caption || undefined,
-  });
+  try {
+    const viewerSource = await getPanoramaViewerSource(src);
+    container.innerHTML = "";
+    panoramaViewer = window.pannellum.viewer(container, {
+      type: "equirectangular",
+      panorama: viewerSource,
+      autoLoad: true,
+      showControls: true,
+      showFullscreenCtrl: true,
+      orientationOnByDefault: false,
+      title: caption || undefined,
+    });
+  } catch (error) {
+    container.innerHTML = `
+      <div class="panorama-error">
+        <b>360-foto openen lukt niet.</b>
+        <span>${escapeHtml(error.message || "Probeer de app te verversen en open de foto opnieuw.")}</span>
+      </div>
+    `;
+  }
 }
 
 function closePanorama() {
   const dialog = document.getElementById("panoramaDialog");
   if (panoramaViewer?.destroy) panoramaViewer.destroy();
   panoramaViewer = null;
+  clearPanoramaObjectUrl();
   const container = document.getElementById("panoramaViewer");
   if (container) container.innerHTML = "";
   if (dialog?.open && typeof dialog.close === "function") dialog.close();
