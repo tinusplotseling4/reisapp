@@ -44,6 +44,7 @@ let remoteMembers = null;
 let remoteDiaryEntries = [];
 let remoteDiaryMedia = [];
 let remoteDiaryComments = [];
+let remoteDiaryLikes = [];
 let photoCommentNotificationState = {
   count: 0,
   latestAt: "",
@@ -1012,12 +1013,14 @@ async function loadRemoteDiary() {
     remoteDiaryEntries = [];
     remoteDiaryMedia = [];
     remoteDiaryComments = [];
+    remoteDiaryLikes = [];
     return;
   }
 
   const entryIds = (entries || []).map((entry) => entry.id);
   let media = [];
   let comments = [];
+  let likes = [];
   if (entryIds.length) {
     let mediaResult = await supabaseClient
       .from("diary_media")
@@ -1078,6 +1081,24 @@ async function loadRemoteDiary() {
     } else {
       comments = commentsResult.data || [];
     }
+
+    const mediaIds = media.filter((item) => item.kind === "photo").map((item) => item.id);
+    if (mediaIds.length) {
+      let likesResult = await supabaseClient
+        .from("diary_media_likes")
+        .select("id, diary_media_id, user_id, created_at")
+        .in("diary_media_id", mediaIds);
+
+      if (likesResult.error && /diary_media_likes|schema cache|does not exist|relation/i.test(likesResult.error.message || "")) {
+        likesResult = { data: [], error: null };
+      }
+
+      if (likesResult.error) {
+        authMessage = likesResult.error.message;
+      } else {
+        likes = likesResult.data || [];
+      }
+    }
   }
 
   remoteDiaryMedia = await Promise.all(
@@ -1090,6 +1111,7 @@ async function loadRemoteDiary() {
 
   remoteDiaryEntries = entries || [];
   remoteDiaryComments = comments;
+  remoteDiaryLikes = likes;
   refreshPhotoCommentNotificationState();
 }
 
@@ -1555,6 +1577,10 @@ function canManageSavedDiaryPhotos() {
   return role === "admin" || role === "leader" || role === "traveler";
 }
 
+function canLikeDiaryPhotos() {
+  return !isCloudMode() || Boolean(authUser);
+}
+
 function canMarkVisited() {
   const role = getCurrentRole();
   return role === "admin" || role === "leader" || role === "traveler";
@@ -1805,6 +1831,7 @@ function getStageDiary(index) {
         const photos = photoMedia
           .map((item) => {
             if (!item.url) return null;
+            const likes = remoteDiaryLikes.filter((like) => like.diary_media_id === item.id);
             return applyPhotoProjectionOverride({
                   src: item.url,
                   caption: item.caption || "",
@@ -1816,6 +1843,8 @@ function getStageDiary(index) {
                       : "flat",
                   lat: item.lat,
                   lon: item.lon,
+                  likeCount: likes.length,
+                  likedByMe: Boolean(authUser && likes.some((like) => like.user_id === authUser.id)),
                   mediaId: item.id,
                   storagePath: item.storage_path || "",
                 });
@@ -1885,6 +1914,8 @@ function normalizeDiaryPhoto(photo) {
     fileLastModified: Number(photo?.fileLastModified || photo?.file_last_modified || 0),
     lat,
     lon,
+    likeCount: Number(photo?.likeCount || photo?.like_count || 0),
+    likedByMe: Boolean(photo?.likedByMe || photo?.liked_by_me),
     mediaId: photo?.mediaId || photo?.media_id || "",
     storagePath: photo?.storagePath || photo?.storage_path || "",
   };
@@ -4352,6 +4383,8 @@ function getAllDiaryPhotos() {
           note: photo.caption || entry.note || entry.transcript || "",
           lat: location?.lat ?? null,
           lon: location?.lon ?? null,
+          likeCount: photo.likeCount || 0,
+          likedByMe: Boolean(photo.likedByMe),
           mediaId: photo.mediaId || "",
           storagePath: photo.storagePath || "",
         };
@@ -4496,6 +4529,68 @@ function deleteSavedDiaryPhotoFromButton(button) {
   );
 }
 
+async function toggleDiaryPhotoLike(mediaId) {
+  if (!mediaId) return;
+  if (isCloudMode() && !authUser) {
+    authMessage = "Log in om foto's te liken.";
+    renderDiaryPanel();
+    renderDashboardOnly();
+    return;
+  }
+
+  const currentLike = remoteDiaryLikes.find(
+    (like) => like.diary_media_id === mediaId && like.user_id === authUser?.id
+  );
+
+  if (isCloudMode() && remoteTrip && authUser) {
+    const request = currentLike
+      ? supabaseClient.from("diary_media_likes").delete().eq("id", currentLike.id)
+      : supabaseClient.from("diary_media_likes").insert({
+          diary_media_id: mediaId,
+          user_id: authUser.id,
+        });
+    const { error } = await request;
+
+    if (error) {
+      authMessage = /diary_media_likes|schema cache|does not exist|relation/i.test(error.message || "")
+        ? "Likes zijn nog niet actief in Supabase. Draai eerst de foto-likes migratie."
+        : error.message;
+      renderDiaryPanel();
+      renderDashboardOnly();
+      return;
+    }
+
+    await loadRemoteDiary();
+    renderDiaryPanel();
+    renderDashboardOnly();
+  }
+}
+
+function toggleDiaryPhotoLikeFromButton(button) {
+  toggleDiaryPhotoLike(button.dataset.mediaId || "");
+}
+
+function renderDiaryPhotoLikeButton(photo) {
+  const item = normalizeDiaryPhoto(photo);
+  if (!item.mediaId) return "";
+  const count = Number(item.likeCount || 0);
+  const liked = Boolean(item.likedByMe);
+  return `
+    <button
+      class="photo-like-button ${liked ? "liked" : ""}"
+      type="button"
+      data-media-id="${escapeHtml(String(item.mediaId))}"
+      onclick="toggleDiaryPhotoLikeFromButton(this)"
+      ${canLikeDiaryPhotos() ? "" : "disabled"}
+      aria-pressed="${liked ? "true" : "false"}"
+      title="${liked ? "Like weghalen" : "Foto liken"}"
+    >
+      <span aria-hidden="true">${liked ? "♥" : "♡"}</span>
+      <b>${count}</b>
+    </button>
+  `;
+}
+
 function getDiaryPhotoIssueCount() {
   return STAGES.reduce(
     (total, _, stageIndex) =>
@@ -4546,6 +4641,9 @@ function renderTravelPhotoGallery() {
                                   projection: item.projection,
                                   lat: item.lat,
                                   lon: item.lon,
+                                  likeCount: item.likeCount,
+                                  likedByMe: item.likedByMe,
+                                  mediaId: item.mediaId,
                                 },
                                 `Reisfoto van ${formatDiaryDate(item.diaryDate)}`
                               )}
@@ -4555,6 +4653,9 @@ function renderTravelPhotoGallery() {
                                 ${renderPhotoLocationLink(item)}
                                 ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
                               </figcaption>
+                              <div class="photo-social-row">
+                                ${renderDiaryPhotoLikeButton(item)}
+                              </div>
                               ${
                                 canManageSavedDiaryPhotos()
                                   ? `<div class="diary-photo-tools travel-photo-tools">
@@ -4710,6 +4811,9 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
                           </figcaption>`
                         : ""
                     }
+                    <div class="photo-social-row">
+                      ${renderDiaryPhotoLikeButton(photo)}
+                    </div>
                     ${
                       canManageSavedDiaryPhotos()
                         ? `<div class="diary-photo-tools">

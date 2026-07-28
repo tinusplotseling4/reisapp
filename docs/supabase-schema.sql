@@ -86,6 +86,14 @@ create table if not exists public.diary_comments (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.diary_media_likes (
+  id uuid primary key default gen_random_uuid(),
+  diary_media_id uuid not null references public.diary_media(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (diary_media_id, user_id)
+);
+
 create table if not exists public.gps_points (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references public.trips(id) on delete cascade,
@@ -118,6 +126,7 @@ create index if not exists diary_media_entry_id_idx on public.diary_media(diary_
 create index if not exists diary_media_taken_at_idx on public.diary_media(taken_at);
 create index if not exists diary_media_location_idx on public.diary_media(lat, lon);
 create index if not exists diary_comments_entry_id_idx on public.diary_comments(diary_entry_id, created_at);
+create index if not exists diary_media_likes_media_idx on public.diary_media_likes(diary_media_id, created_at);
 create index if not exists gps_points_trip_recorded_idx on public.gps_points(trip_id, recorded_at);
 create index if not exists lotte_bingo_items_trip_updated_idx on public.lotte_bingo_items(trip_id, updated_at);
 
@@ -192,6 +201,7 @@ alter table public.visited_pois enable row level security;
 alter table public.diary_entries enable row level security;
 alter table public.diary_media enable row level security;
 alter table public.diary_comments enable row level security;
+alter table public.diary_media_likes enable row level security;
 alter table public.gps_points enable row level security;
 alter table public.lotte_bingo_items enable row level security;
 
@@ -396,6 +406,50 @@ with check (
     select 1
     from public.diary_entries entry
     where entry.id = diary_entry_id
+      and public.is_trip_member(entry.trip_id)
+  )
+);
+
+create policy "members can read diary photo likes"
+on public.diary_media_likes for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.diary_media media
+    join public.diary_entries entry on entry.id = media.diary_entry_id
+    where media.id = diary_media_id
+      and media.kind = 'photo'
+      and public.is_trip_member(entry.trip_id)
+  )
+);
+
+create policy "members can create diary photo likes"
+on public.diary_media_likes for insert
+to authenticated
+with check (
+  user_id = auth.uid()
+  and exists (
+    select 1
+    from public.diary_media media
+    join public.diary_entries entry on entry.id = media.diary_entry_id
+    where media.id = diary_media_id
+      and media.kind = 'photo'
+      and public.is_trip_member(entry.trip_id)
+  )
+);
+
+create policy "members can remove own diary photo likes"
+on public.diary_media_likes for delete
+to authenticated
+using (
+  user_id = auth.uid()
+  and exists (
+    select 1
+    from public.diary_media media
+    join public.diary_entries entry on entry.id = media.diary_entry_id
+    where media.id = diary_media_id
+      and media.kind = 'photo'
       and public.is_trip_member(entry.trip_id)
   )
 );

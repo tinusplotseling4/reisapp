@@ -1668,6 +1668,49 @@ button:hover,
   text-decoration: underline;
 }
 
+.photo-social-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 0 10px;
+}
+
+.diary-photo-saved .photo-social-row {
+  padding: 0;
+}
+
+.photo-like-button {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  width: fit-content;
+  min-height: 34px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--control-bg);
+  color: var(--text);
+  padding: 7px 11px;
+  font: inherit;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.photo-like-button span {
+  color: #ff5c7a;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.photo-like-button.liked {
+  background: #2a1018;
+  color: #fff;
+}
+
+.photo-like-button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
 .diary-note-readonly {
   margin: 0;
   padding: 12px;
