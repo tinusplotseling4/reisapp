@@ -1021,9 +1021,17 @@ async function loadRemoteDiary() {
   if (entryIds.length) {
     let mediaResult = await supabaseClient
       .from("diary_media")
-      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, projection, created_at")
+      .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, projection, lat, lon, created_at")
       .in("diary_entry_id", entryIds)
       .order("created_at", { ascending: true });
+
+    if (mediaResult.error && /lat|lon|column|schema cache/i.test(mediaResult.error.message || "")) {
+      mediaResult = await supabaseClient
+        .from("diary_media")
+        .select("id, diary_entry_id, kind, storage_path, admin_only, caption, taken_at, projection, created_at")
+        .in("diary_entry_id", entryIds)
+        .order("created_at", { ascending: true });
+    }
 
     if (mediaResult.error && /projection|column|schema cache/i.test(mediaResult.error.message || "")) {
       mediaResult = await supabaseClient
@@ -1806,6 +1814,8 @@ function getStageDiary(index) {
                     item.projection === "equirectangular" || /-360\.[a-z0-9]+$/i.test(item.storage_path || "")
                       ? "equirectangular"
                       : "flat",
+                  lat: item.lat,
+                  lon: item.lon,
                   mediaId: item.id,
                   storagePath: item.storage_path || "",
                 });
@@ -1855,8 +1865,12 @@ function normalizeDiaryPhoto(photo) {
       fileName: "",
       fileSize: 0,
       fileLastModified: 0,
+      lat: null,
+      lon: null,
     };
   }
+  const lat = normalizePhotoCoordinate(photo?.lat ?? photo?.latitude);
+  const lon = normalizePhotoCoordinate(photo?.lon ?? photo?.lng ?? photo?.longitude);
   return {
     src: photo?.src || photo?.url || "",
     caption: photo?.caption || "",
@@ -1869,9 +1883,44 @@ function normalizeDiaryPhoto(photo) {
     fileName: photo?.fileName || photo?.file_name || "",
     fileSize: Number(photo?.fileSize || photo?.file_size || 0),
     fileLastModified: Number(photo?.fileLastModified || photo?.file_last_modified || 0),
+    lat,
+    lon,
     mediaId: photo?.mediaId || photo?.media_id || "",
     storagePath: photo?.storagePath || photo?.storage_path || "",
   };
+}
+
+function normalizePhotoCoordinate(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function getDiaryPhotoLocation(photo) {
+  const item = normalizeDiaryPhoto(photo);
+  if (item.lat === null || item.lon === null) return null;
+  return { lat: item.lat, lon: item.lon };
+}
+
+function formatPhotoLocation(location) {
+  if (!location) return "";
+  return `${location.lat.toFixed(5)}, ${location.lon.toFixed(5)}`;
+}
+
+function getPhotoLocationMapUrl(location) {
+  if (!location) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${location.lat},${location.lon}`)}`;
+}
+
+function renderPhotoLocationLink(photo) {
+  const location = getDiaryPhotoLocation(photo);
+  if (!location) return "";
+  return `
+    <a class="photo-location-link" href="${getPhotoLocationMapUrl(location)}" target="_blank" rel="noopener">
+      Locatie op kaart
+      <small>${formatPhotoLocation(location)}</small>
+    </a>
+  `;
 }
 
 function isPanoramaPhoto(photo) {
@@ -2174,6 +2223,22 @@ async function readDiaryPhotoTakenAt(file) {
   return fallbackDate.toISOString();
 }
 
+async function readDiaryPhotoLocation(file) {
+  if (!window.exifr) return null;
+
+  try {
+    const gps = window.exifr.gps
+      ? await window.exifr.gps(file)
+      : await window.exifr.parse(file, ["GPSLatitude", "GPSLongitude", "latitude", "longitude"]);
+    const lat = normalizePhotoCoordinate(gps?.latitude ?? gps?.GPSLatitude);
+    const lon = normalizePhotoCoordinate(gps?.longitude ?? gps?.GPSLongitude);
+    if (lat === null || lon === null) return null;
+    return { lat, lon };
+  } catch (_error) {
+    return null;
+  }
+}
+
 function getTripDateKey(value) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "";
@@ -2233,6 +2298,7 @@ async function prepareDiaryPhoto(file, projection = "flat", takenAt = "") {
   if (!file.type.startsWith("image/")) throw new Error(`${file.name} is geen afbeelding.`);
   if (file.size > 45 * 1024 * 1024) throw new Error(`${file.name} is groter dan 45 MB.`);
 
+  const location = await readDiaryPhotoLocation(file);
   let previewUrl = URL.createObjectURL(file);
   let uploadFile = file;
   let image;
@@ -2277,6 +2343,8 @@ async function prepareDiaryPhoto(file, projection = "flat", takenAt = "") {
       fileName: file.name || uploadFile.name || "",
       fileSize: file.size || uploadFile.size || 0,
       fileLastModified: file.lastModified || uploadFile.lastModified || 0,
+      lat: location?.lat ?? null,
+      lon: location?.lon ?? null,
     };
   } catch (error) {
     URL.revokeObjectURL(previewUrl);
@@ -2323,6 +2391,7 @@ async function handleDiaryArchivePhotos(input) {
           fileName: file.name || "",
           fileSize: file.size || 0,
           fileLastModified: file.lastModified || 0,
+          ...(await readDiaryPhotoLocation(file) || {}),
         };
         const fingerprint = getDiaryPhotoFingerprint(photo);
         if (seenUploadFingerprints.has(fingerprint)) {
@@ -2647,6 +2716,7 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
     const caption = kind === "photo" ? item.caption.trim() : "";
     const takenAt = kind === "photo" && item.takenAt ? new Date(item.takenAt).toISOString() : "";
     const projection = kind === "photo" ? item.projection : "flat";
+    const location = kind === "photo" ? getDiaryPhotoLocation(item) : null;
     const fallbackExtension = kind === "audio" ? "webm" : "jpg";
     const blob = kind === "photo" && item.file ? item.file : dataUrlToBlob(dataUrl);
     const extension =
@@ -2668,6 +2738,7 @@ async function uploadDiaryFiles(stageIndex, items, kind) {
       ...(caption ? { caption } : {}),
       ...(takenAt ? { taken_at: takenAt } : {}),
       ...(kind === "photo" ? { projection } : {}),
+      ...(location ? { lat: location.lat, lon: location.lon } : {}),
     });
   }
 
@@ -2685,6 +2756,14 @@ async function attachDiaryMedia(entryId, rows) {
     missingProjection = true;
     payload = payload.map(({ projection, ...row }) => row);
     result = await supabaseClient.from("diary_media").insert(payload);
+  }
+
+  if (result.error && /lat|lon|column|schema cache/i.test(result.error.message || "")) {
+    payload = payload.map(({ lat, lon, ...row }) => row);
+    result = await supabaseClient.from("diary_media").insert(payload);
+    if (!result.error) {
+      authMessage = "Foto opgeslagen. Fotolocatie wordt centraal bewaard nadat de fotolocatie-migratie is uitgevoerd.";
+    }
   }
 
   if (result.error && /caption|taken_at|column|schema cache/i.test(result.error.message || "")) {
@@ -4199,6 +4278,7 @@ function getAllDiaryPhotos() {
     getStageDiary(stageIndex).flatMap((entry) =>
       getDiaryPhotoItems(entry).map((photo, photoIndex) => {
         const takenAt = getDiaryPhotoTakenAt(photo) || "";
+        const location = getDiaryPhotoLocation(photo);
         return {
           photo: photo.src,
           projection: photo.projection,
@@ -4212,6 +4292,8 @@ function getAllDiaryPhotos() {
           uploadedAt: photo.uploadedAt || entry.createdAt || "",
           author: entry.author || "Reiziger",
           note: photo.caption || entry.note || entry.transcript || "",
+          lat: location?.lat ?? null,
+          lon: location?.lon ?? null,
           mediaId: photo.mediaId || "",
           storagePath: photo.storagePath || "",
         };
@@ -4221,7 +4303,8 @@ function getAllDiaryPhotos() {
     .sort((left, right) => {
       const leftTime = Date.parse(left.takenAt || left.uploadedAt || left.createdAt || "") || 0;
       const rightTime = Date.parse(right.takenAt || right.uploadedAt || right.createdAt || "") || 0;
-      return rightTime - leftTime;
+      if (rightTime !== leftTime) return rightTime - leftTime;
+      return formatPhotoLocation(getDiaryPhotoLocation(left)).localeCompare(formatPhotoLocation(getDiaryPhotoLocation(right)));
     });
 }
 
@@ -4403,12 +4486,15 @@ function renderTravelPhotoGallery() {
                                   src: item.photo,
                                   caption: item.note,
                                   projection: item.projection,
+                                  lat: item.lat,
+                                  lon: item.lon,
                                 },
                                 `Reisfoto van ${formatDiaryDate(item.diaryDate)}`
                               )}
                               <figcaption>
                                 <b>${getTravelPhotoTimeLabel(item)}</b>
                                 <span>${item.author || "Reiziger"}</span>
+                                ${renderPhotoLocationLink(item)}
                                 ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
                               </figcaption>
                               ${
@@ -4558,7 +4644,14 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
                 .map((photo, photoIndex) => `
                   <figure class="diary-photo-saved">
                     ${renderDiaryPhotoVisual(photo, isPanoramaPhoto(photo) ? "360-dagboekfoto" : "Dagboekfoto")}
-                    ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
+                    ${
+                      photo.caption || getDiaryPhotoLocation(photo)
+                        ? `<figcaption>
+                            ${photo.caption ? `<span>${escapeHtml(photo.caption)}</span>` : ""}
+                            ${renderPhotoLocationLink(photo)}
+                          </figcaption>`
+                        : ""
+                    }
                     ${
                       canManageSavedDiaryPhotos()
                         ? `<div class="diary-photo-tools">

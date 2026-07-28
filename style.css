@@ -1648,6 +1648,26 @@ button:hover,
   line-height: 1.35;
 }
 
+.photo-location-link {
+  display: grid;
+  gap: 2px;
+  width: fit-content;
+  color: var(--accent);
+  font-weight: 900;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.photo-location-link small {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.photo-location-link:hover,
+.photo-location-link:focus-visible {
+  text-decoration: underline;
+}
+
 .diary-note-readonly {
   margin: 0;
   padding: 12px;
@@ -1827,6 +1847,8 @@ button:hover,
 }
 
 .diary-photo-saved figcaption {
+  display: grid;
+  gap: 4px;
   color: var(--muted);
   font-weight: 800;
   line-height: 1.35;

@@ -72,6 +72,8 @@ create table if not exists public.diary_media (
   admin_only boolean not null default false,
   caption text,
   taken_at timestamptz,
+  lat double precision,
+  lon double precision,
   projection text not null default 'flat' check (projection in ('flat', 'equirectangular')),
   created_at timestamptz not null default now()
 );
@@ -114,6 +116,7 @@ create index if not exists diary_entries_trip_id_idx on public.diary_entries(tri
 create index if not exists diary_entries_trip_date_idx on public.diary_entries(trip_id, diary_date, created_at);
 create index if not exists diary_media_entry_id_idx on public.diary_media(diary_entry_id);
 create index if not exists diary_media_taken_at_idx on public.diary_media(taken_at);
+create index if not exists diary_media_location_idx on public.diary_media(lat, lon);
 create index if not exists diary_comments_entry_id_idx on public.diary_comments(diary_entry_id, created_at);
 create index if not exists gps_points_trip_recorded_idx on public.gps_points(trip_id, recorded_at);
 create index if not exists lotte_bingo_items_trip_updated_idx on public.lotte_bingo_items(trip_id, updated_at);
