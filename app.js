@@ -1,4 +1,4 @@
-const ROLES = {
+﻿const ROLES = {
   admin: "Administrator",
   leader: "Reisleider",
   traveler: "Reisgenoot",
@@ -2144,10 +2144,25 @@ async function readDiaryPhotoTakenAt(file) {
     try {
       const metadata = await window.exifr.parse(file, [
         "DateTimeOriginal",
+        "SubSecDateTimeOriginal",
+        "DateTimeDigitized",
         "CreateDate",
+        "SubSecCreateDate",
         "ModifyDate",
+        "MediaCreateDate",
+        "TrackCreateDate",
+        "CreationDate",
       ]);
-      const capturedAt = metadata?.DateTimeOriginal || metadata?.CreateDate || metadata?.ModifyDate;
+      const capturedAt =
+        metadata?.SubSecDateTimeOriginal ||
+        metadata?.DateTimeOriginal ||
+        metadata?.DateTimeDigitized ||
+        metadata?.SubSecCreateDate ||
+        metadata?.CreateDate ||
+        metadata?.MediaCreateDate ||
+        metadata?.TrackCreateDate ||
+        metadata?.CreationDate ||
+        metadata?.ModifyDate;
       const capturedDate = capturedAt ? new Date(capturedAt) : null;
       if (capturedDate && !Number.isNaN(capturedDate.getTime())) return capturedDate.toISOString();
     } catch (_error) {
@@ -2991,7 +3006,7 @@ function renderDiaryComposer(stageIndex) {
           canAddDiaryMedia()
             ? `<button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="openDiaryPhotoInput('camera')">Foto maken</button>
                <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>
-               <button class="linkbtn panorama-select ${diaryDraft.mode === "panorama" ? "primary" : ""}" onclick="openDiaryPhotoInput('panorama')">360°-foto kiezen</button>`
+               <button class="linkbtn panorama-select ${diaryDraft.mode === "panorama" ? "primary" : ""}" onclick="openDiaryPhotoInput('panorama')">360Â°-foto kiezen</button>`
             : ""
         }
         <button class="linkbtn ${diaryDraft.mode === "text" ? "primary" : ""}" onclick="setDiaryMode('text')">Tekst</button>
@@ -3021,19 +3036,19 @@ function renderDiaryComposer(stageIndex) {
                       <div class="diary-photo-preview">
                         <img src="${photoItem.src}" alt="${panorama ? "Voorbeeld van 360-foto" : "Dagboekfoto"}">
                         ${panorama ? `
-                          <span class="panorama-badge">360°</span>
+                          <span class="panorama-badge">360Â°</span>
                           <button
                             class="panorama-preview-open"
                             type="button"
                             data-panorama-src="${escapeHtml(photoItem.src)}"
                             data-panorama-caption="${escapeHtml(photoItem.caption)}"
                             onclick="openPanoramaFromButton(this)"
-                          >360° bekijken</button>
+                          >360Â° bekijken</button>
                         ` : ""}
                       </div>
                       <textarea class="diary-photo-caption" oninput="updateDiaryPhotoCaption(${index}, this.value)" placeholder="Tekstje bij deze foto (optioneel). Typ, of gebruik de microfoon op je toetsenbord.">${escapeHtml(photoItem.caption)}</textarea>
                       <button class="linkbtn" onclick="toggleDiaryPhotoProjection(${index})">
-                        ${panorama ? "Opslaan als gewone foto" : "Markeer als 360°-foto"}
+                        ${panorama ? "Opslaan als gewone foto" : "Markeer als 360Â°-foto"}
                       </button>
                       <button class="linkbtn stopbtn" onclick="removeDiaryPhoto(${index})">Verwijderen</button>
                     </div>
@@ -3311,26 +3326,26 @@ const TOTAL_ROUTE_HIGHLIGHTS = [
   { stage: 0, point: 2, name: "Hamburg Speicherstadt", type: "Stad", score: 3, note: "UNESCO-pakhuizen en havengevoel; alleen doen als Hamburg toch pauze wordt.", search: "Speicherstadt Hamburg" },
   { stage: 0, point: 3, name: "Jelling monumenten", type: "UNESCO", score: 4, note: "Vikingstenen en grafheuvels; een van de bekendste historische stops van Denemarken.", search: "Jelling Monuments Denmark" },
   { stage: 0, point: 4, name: "Nyborg bij de Grote Belt", type: "Uitzicht", score: 3, note: "Goede plek om de Grote Beltbrug niet alleen vanuit de auto te zien.", search: "Nyborg Great Belt Bridge viewpoint" },
-  { stage: 0, point: 5, name: "Dragør oude haven", type: "Kustplaats", score: 3, note: "Historisch havenstadje bij Kopenhagen, handig vlak voor of na de Oresundbrug.", search: "Dragor old town Denmark" },
-  { stage: 0, point: 6, name: "Lund kathedraal", type: "Cultuur", score: 3, note: "Historische stad vlak bij Malmö; betere stop dan eindeloos tankstationhangen.", search: "Lund Cathedral Sweden" },
-  { stage: 1, point: 1, name: "Göteborg archipel", type: "Kust", score: 3, note: "Mooie kustsfeer bij Göteborg; vooral interessant als jullie daar tijd over hebben.", search: "Gothenburg archipelago viewpoint" },
-  { stage: 1, point: 1, name: "Bohus vesting", type: "Historie", score: 3, note: "Kasteelruïne noord van Göteborg, logisch langs de route richting Noorwegen.", search: "Bohus Fortress Sweden" },
+  { stage: 0, point: 5, name: "DragÃ¸r oude haven", type: "Kustplaats", score: 3, note: "Historisch havenstadje bij Kopenhagen, handig vlak voor of na de Oresundbrug.", search: "Dragor old town Denmark" },
+  { stage: 0, point: 6, name: "Lund kathedraal", type: "Cultuur", score: 3, note: "Historische stad vlak bij MalmÃ¶; betere stop dan eindeloos tankstationhangen.", search: "Lund Cathedral Sweden" },
+  { stage: 1, point: 1, name: "GÃ¶teborg archipel", type: "Kust", score: 3, note: "Mooie kustsfeer bij GÃ¶teborg; vooral interessant als jullie daar tijd over hebben.", search: "Gothenburg archipelago viewpoint" },
+  { stage: 1, point: 1, name: "Bohus vesting", type: "Historie", score: 3, note: "KasteelruÃ¯ne noord van GÃ¶teborg, logisch langs de route richting Noorwegen.", search: "Bohus Fortress Sweden" },
   { stage: 1, point: 2, name: "Oslo Operahuis", type: "Stad", score: 3, note: "Korte stadsstop met uitzicht vanaf het dak, mits Oslo niet te druk voelt.", search: "Oslo Opera House" },
   { stage: 1, point: 2, name: "Holmenkollen", type: "Uitzicht", score: 3, note: "Bekende skispringschans en uitzicht over Oslo; kleine omweg, groot herkenningspunt.", search: "Holmenkollen Oslo" },
   { stage: 1, point: 3, name: "Spiralen Drammen", type: "Uitzicht", score: 3, note: "Tunnelspiraal naar uitzichtpunt boven Drammen; past goed als korte pauze.", search: "Spiralen Drammen viewpoint" },
   { stage: 1, point: 4, name: "Torpo staafkerk", type: "Cultuur", score: 3, note: "Oudere staafkerk langs Hallingdal, minder druk dan de grote namen.", search: "Torpo Stave Church Norway" },
   { stage: 2, point: 2, name: "Sysendammen", type: "Route", score: 3, note: "Stuwdam op Hardangervidda, goed als extra hoogvlakte-stop.", search: "Sysendammen Hardangervidda" },
-  { stage: 2, point: 3, name: "Vøringsfossen Fossli", type: "Waterval", score: 5, note: "Extra uitzichtpunt bij Vøringsfossen; deze wil je meestal niet missen.", search: "Voringfossen Fossli viewpoint" },
-  { stage: 2, point: 4, name: "Kjeåsen bergboerderij", type: "Uitzicht", score: 4, note: "Spectaculair boven Eidfjord, maar check weg/tunnelregeling en voertuiggeschiktheid.", search: "Kjeåsen mountain farm Eidfjord" },
+  { stage: 2, point: 3, name: "VÃ¸ringsfossen Fossli", type: "Waterval", score: 5, note: "Extra uitzichtpunt bij VÃ¸ringsfossen; deze wil je meestal niet missen.", search: "Voringfossen Fossli viewpoint" },
+  { stage: 2, point: 4, name: "KjeÃ¥sen bergboerderij", type: "Uitzicht", score: 4, note: "Spectaculair boven Eidfjord, maar check weg/tunnelregeling en voertuiggeschiktheid.", search: "KjeÃ¥sen mountain farm Eidfjord" },
   { stage: 3, point: 1, name: "Hardangerfjord uitzichtpunten", type: "Fjord", score: 4, note: "Meerdere korte stops rond de Hardangerbrug en fjordarmen.", search: "Hardangerfjord viewpoint near Hardanger Bridge" },
   { stage: 3, point: 2, name: "Steinsdalsfossen", type: "Waterval", score: 4, note: "Bekende waterval waar je achterlangs kunt lopen; mooie Hardanger-omweg.", search: "Steinsdalsfossen Norway" },
   { stage: 3, point: 3, name: "Tvindefossen", type: "Waterval", score: 4, note: "Makkelijk bereikbare waterval bij Voss, sterk als korte stop.", search: "Tvindefossen Voss Norway" },
-  { stage: 3, point: 4, name: "Gudvangen", type: "Fjorddorp", score: 4, note: "Dorp aan de Nærøyfjord; toeristisch, maar landschappelijk erg sterk.", search: "Gudvangen Norway" },
-  { stage: 3, point: 4, name: "Nærøyfjord", type: "UNESCO fjord", score: 5, note: "Een van de beroemdste fjorden van Noorwegen; vooral interessant per boot of uitzichtpunt.", search: "Nærøyfjord Norway" },
-  { stage: 3, point: 4, name: "Flåmsbana", type: "Trein", score: 4, note: "Bekende bergspoorlijn vanuit Flåm; alleen doen als jullie bewust tijd reserveren.", search: "Flåmsbana Flåm Railway" },
-  { stage: 4, point: 1, name: "Aurlandsfjellet snow road", type: "Scenic route", score: 5, note: "Officiële scenic route boven de Laerdaltunnel; check opening en weer.", search: "Aurlandsfjellet scenic route Norway" },
+  { stage: 3, point: 4, name: "Gudvangen", type: "Fjorddorp", score: 4, note: "Dorp aan de NÃ¦rÃ¸yfjord; toeristisch, maar landschappelijk erg sterk.", search: "Gudvangen Norway" },
+  { stage: 3, point: 4, name: "NÃ¦rÃ¸yfjord", type: "UNESCO fjord", score: 5, note: "Een van de beroemdste fjorden van Noorwegen; vooral interessant per boot of uitzichtpunt.", search: "NÃ¦rÃ¸yfjord Norway" },
+  { stage: 3, point: 4, name: "FlÃ¥msbana", type: "Trein", score: 4, note: "Bekende bergspoorlijn vanuit FlÃ¥m; alleen doen als jullie bewust tijd reserveren.", search: "FlÃ¥msbana FlÃ¥m Railway" },
+  { stage: 4, point: 1, name: "Aurlandsfjellet snow road", type: "Scenic route", score: 5, note: "OfficiÃ«le scenic route boven de Laerdaltunnel; check opening en weer.", search: "Aurlandsfjellet scenic route Norway" },
   { stage: 4, point: 2, name: "Vindhellavegen", type: "Wandeling", score: 4, note: "Historische weg/wandeling bij Borgund, mooi te combineren met de staafkerk.", search: "Vindhellavegen Borgund" },
-  { stage: 4, point: 3, name: "Bøyabreen gletsjer", type: "Gletsjer", score: 4, note: "Toegankelijke gletsjerarm onderweg richting Olden/Loen.", search: "Bøyabreen glacier Norway" },
+  { stage: 4, point: 3, name: "BÃ¸yabreen gletsjer", type: "Gletsjer", score: 4, note: "Toegankelijke gletsjerarm onderweg richting Olden/Loen.", search: "BÃ¸yabreen glacier Norway" },
   { stage: 4, point: 4, name: "Briksdalsbreen", type: "Gletsjer", score: 5, note: "Een van de bekendste gletsjerstops bij Olden; kost wel tijd.", search: "Briksdalsbreen Olden" },
   { stage: 4, point: 5, name: "Loen Skylift", type: "Uitzicht", score: 5, note: "Groot uitzicht boven Loen; alleen bij redelijk zicht echt de moeite waard.", search: "Loen Skylift Norway" },
   { stage: 4, point: 5, name: "Lovatnet", type: "Meer", score: 5, note: "Fotogeniek meer bij Loen, sterk voor rustige avond of ochtend.", search: "Lovatnet Loen Norway" },
@@ -3340,21 +3355,21 @@ const TOTAL_ROUTE_HIGHLIGHTS = [
   { stage: 5, point: 5, name: "Geiranger-Hellesylt ferry", type: "Fjordtocht", score: 5, note: "Autoferry die tegelijk sightseeing is; sterk als route en beleving samenvallen.", search: "Geiranger Hellesylt ferry" },
   { stage: 6, point: 2, name: "Gudbrandsjuvet", type: "Kloof", score: 4, note: "Korte stop met goed platform boven wild water.", search: "Gudbrandsjuvet viewpoint" },
   { stage: 6, point: 3, name: "Trollstigen visitor centre", type: "Uitzicht", score: 5, note: "Hoofdplek voor zicht op de haarspeldbochten, mits de weg open is.", search: "Trollstigen visitor centre" },
-  { stage: 6, point: 4, name: "Rampestreken", type: "Wandeling", score: 4, note: "Uitzichtpunt boven Åndalsnes; stevige wandeling, dus alleen met tijd/energie.", search: "Rampestreken Åndalsnes" },
+  { stage: 6, point: 4, name: "Rampestreken", type: "Wandeling", score: 4, note: "Uitzichtpunt boven Ã…ndalsnes; stevige wandeling, dus alleen met tijd/energie.", search: "Rampestreken Ã…ndalsnes" },
   { stage: 6, point: 4, name: "Romsdalseggen", type: "Wandeling", score: 5, note: "Topwandeling bij goed weer, maar geen snelle stop.", search: "Romsdalseggen hike" },
   { stage: 7, point: 1, name: "Varden Molde panorama", type: "Uitzicht", score: 4, note: "Uitzicht over Molde en de bergketen; korte omweg als het helder is.", search: "Varden Molde panorama" },
   { stage: 7, point: 2, name: "Ergan Coastal Fort Bud", type: "Historie", score: 3, note: "Kustfort/museum bij Bud, passend bij de Atlantische kustroute.", search: "Ergan Coastal Fort Bud Norway" },
-  { stage: 7, point: 3, name: "Eldhusøya viewpoint", type: "Uitzicht", score: 5, note: "Wandelpad en uitzichtpunt op de Atlantische Weg; beter dan alleen doorrijden.", search: "Eldhusøya Atlantic Road" },
-  { stage: 7, point: 4, name: "Kvernes staafkerk", type: "Cultuur", score: 3, note: "Historische kerk op Averøy, mooi als extra stop rond de Atlantische Weg.", search: "Kvernes Stave Church" },
+  { stage: 7, point: 3, name: "EldhusÃ¸ya viewpoint", type: "Uitzicht", score: 5, note: "Wandelpad en uitzichtpunt op de Atlantische Weg; beter dan alleen doorrijden.", search: "EldhusÃ¸ya Atlantic Road" },
+  { stage: 7, point: 4, name: "Kvernes staafkerk", type: "Cultuur", score: 3, note: "Historische kerk op AverÃ¸y, mooi als extra stop rond de Atlantische Weg.", search: "Kvernes Stave Church" },
   { stage: 8, point: 2, name: "Dovrefjell musk ox area", type: "Natuur", score: 4, note: "Bekend gebied voor muskusossen; alleen verantwoord met tijd en afstand houden.", search: "Dovrefjell musk ox viewpoint" },
   { stage: 8, point: 4, name: "Bakeriet i Lom", type: "Pauze", score: 3, note: "Bekende bakkerij in Lom, goede pauze rond de staafkerk.", search: "Bakeriet i Lom" },
   { stage: 8, point: 5, name: "Sognefjellet", type: "Scenic route", score: 5, note: "Hoogste bergpasroute van Noord-Europa; alleen als hij logisch in jullie dag past.", search: "Sognefjellet scenic route Norway" },
   { stage: 9, point: 0, name: "Gjende en Besseggen", type: "Meer/wandeling", score: 5, note: "Iconische Jotunheimen-plek; meer dagactiviteit dan snelle stop.", search: "Gjende Besseggen Jotunheimen" },
   { stage: 9, point: 1, name: "Valdresflye", type: "Scenic route", score: 5, note: "Open berglandschap tussen Jotunheimen en Valdres, erg sterk bij helder weer.", search: "Valdresflye scenic route" },
-  { stage: 9, point: 6, name: "Karlstad centrum en Klarälven", type: "Stad", score: 2, note: "Logische Zweden-stop voor avondeten of korte wandeling aan de rivier.", search: "Karlstad Klarälven" },
-  { stage: 10, point: 1, name: "Universeum Göteborg", type: "Kinderen", score: 3, note: "Goed indoor alternatief als weer of energie niet meewerkt.", search: "Universeum Gothenburg" },
-  { stage: 10, point: 2, name: "Ribersborg Malmö", type: "Kust", score: 2, note: "Strand/kustpauze bij Malmö voor de lange terugrit.", search: "Ribersborg Malmö" },
-  { stage: 10, point: 5, name: "Lüneburger Heide", type: "Natuur", score: 2, note: "Mogelijke rustige pauze tussen Hamburg en Nederland als de terugreis lang wordt.", search: "Lüneburger Heide viewpoint" },
+  { stage: 9, point: 6, name: "Karlstad centrum en KlarÃ¤lven", type: "Stad", score: 2, note: "Logische Zweden-stop voor avondeten of korte wandeling aan de rivier.", search: "Karlstad KlarÃ¤lven" },
+  { stage: 10, point: 1, name: "Universeum GÃ¶teborg", type: "Kinderen", score: 3, note: "Goed indoor alternatief als weer of energie niet meewerkt.", search: "Universeum Gothenburg" },
+  { stage: 10, point: 2, name: "Ribersborg MalmÃ¶", type: "Kust", score: 2, note: "Strand/kustpauze bij MalmÃ¶ voor de lange terugrit.", search: "Ribersborg MalmÃ¶" },
+  { stage: 10, point: 5, name: "LÃ¼neburger Heide", type: "Natuur", score: 2, note: "Mogelijke rustige pauze tussen Hamburg en Nederland als de terugreis lang wordt.", search: "LÃ¼neburger Heide viewpoint" },
 ];
 
 function openTotalRoute() {
@@ -4100,8 +4115,8 @@ function renderDiaryPhotoVisual(photo, alt) {
       aria-label="Open 360-foto"
     >
       <img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}">
-      <span class="panorama-badge">360°</span>
-      <span class="panorama-open-label">Open 360°</span>
+      <span class="panorama-badge">360Â°</span>
+      <span class="panorama-open-label">Open 360Â°</span>
     </button>
   `;
 }
@@ -4182,12 +4197,14 @@ function getDiaryEntriesByDate(dateKey) {
 function getAllDiaryPhotos() {
   return STAGES.flatMap((_, stageIndex) =>
     getStageDiary(stageIndex).flatMap((entry) =>
-      getDiaryPhotoItems(entry).map((photo) => {
+      getDiaryPhotoItems(entry).map((photo, photoIndex) => {
         const takenAt = getDiaryPhotoTakenAt(photo) || "";
         return {
           photo: photo.src,
           projection: photo.projection,
           stageIndex,
+          entryId: entry.id,
+          photoIndex,
           diaryDate: getTripDateKey(takenAt) || getDiaryEntryDate(entry, stageIndex),
           created: entry.created,
           createdAt: entry.createdAt || "",
@@ -4233,6 +4250,109 @@ function getTravelPhotoTimeLabel(item) {
   if (taken) return `Gemaakt ${taken}`;
   const uploaded = formatPhotoDateTime(item.uploadedAt || item.createdAt);
   return uploaded ? `Geupload ${uploaded}` : item.created || "";
+}
+
+function toDateTimeLocalValue(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+async function updateSavedDiaryPhotoTakenAt(stageIndex, entryId, mediaId, photoIndex, value) {
+  if (!canManageSavedDiaryPhotos() || !value) return;
+  const takenAt = new Date(value).toISOString();
+
+  if (isCloudMode() && remoteTrip && authUser && mediaId) {
+    const { error } = await supabaseClient
+      .from("diary_media")
+      .update({ taken_at: takenAt })
+      .eq("id", mediaId);
+
+    authMessage = error
+      ? `Fotodatum aanpassen lukte niet: ${error.message}`
+      : "Fotodatum aangepast.";
+    if (!error) await loadRemoteDiary();
+    renderStages();
+    renderDiaryPanel();
+    renderDashboardOnly();
+    return;
+  }
+
+  const entries = getStageDiary(stageIndex).map((entry) => {
+    if (String(entry.id) !== String(entryId)) return entry;
+    return {
+      ...entry,
+      photos: getDiaryPhotoItems(entry).map((photo, index) =>
+        index === photoIndex ? { ...photo, takenAt } : photo
+      ),
+    };
+  });
+  authMessage = "Fotodatum aangepast.";
+  saveStageDiary(stageIndex, entries);
+  renderStages();
+  renderDiaryPanel();
+  renderDashboardOnly();
+}
+
+function updateSavedDiaryPhotoTakenAtFromInput(input) {
+  updateSavedDiaryPhotoTakenAt(
+    Number(input.dataset.stageIndex),
+    input.dataset.entryId || "",
+    input.dataset.mediaId || "",
+    Number(input.dataset.photoIndex),
+    input.value
+  );
+}
+
+async function deleteSavedDiaryPhoto(stageIndex, entryId, mediaId, photoIndex, storagePath = "") {
+  if (!canManageSavedDiaryPhotos()) return;
+  const confirmed = window.confirm("Deze foto verwijderen uit het reisdagboek?");
+  if (!confirmed) return;
+
+  if (isCloudMode() && remoteTrip && authUser && mediaId) {
+    if (storagePath) {
+      const { error: storageError } = await supabaseClient.storage.from("diary-photos").remove([storagePath]);
+      if (storageError) authMessage = `Bestand verwijderen lukte niet: ${storageError.message}`;
+    }
+
+    const { error } = await supabaseClient
+      .from("diary_media")
+      .delete()
+      .eq("id", mediaId);
+
+    authMessage = error
+      ? `Foto verwijderen lukte niet: ${error.message}`
+      : "Foto verwijderd.";
+    if (!error) await loadRemoteDiary();
+    renderStages();
+    renderDiaryPanel();
+    renderDashboardOnly();
+    return;
+  }
+
+  const entries = getStageDiary(stageIndex).map((entry) => {
+    if (String(entry.id) !== String(entryId)) return entry;
+    return {
+      ...entry,
+      photos: getDiaryPhotoItems(entry).filter((_, index) => index !== photoIndex),
+    };
+  });
+  authMessage = "Foto verwijderd.";
+  saveStageDiary(stageIndex, entries);
+  renderStages();
+  renderDiaryPanel();
+  renderDashboardOnly();
+}
+
+function deleteSavedDiaryPhotoFromButton(button) {
+  deleteSavedDiaryPhoto(
+    Number(button.dataset.stageIndex),
+    button.dataset.entryId || "",
+    button.dataset.mediaId || "",
+    Number(button.dataset.photoIndex),
+    button.dataset.storagePath || ""
+  );
 }
 
 function getDiaryPhotoIssueCount() {
@@ -4291,6 +4411,36 @@ function renderTravelPhotoGallery() {
                                 <span>${item.author || "Reiziger"}</span>
                                 ${item.note ? `<small>${escapeHtml(item.note)}</small>` : ""}
                               </figcaption>
+                              ${
+                                canManageSavedDiaryPhotos()
+                                  ? `<div class="diary-photo-tools travel-photo-tools">
+                                      <label>
+                                        Opnamedatum
+                                        <input
+                                          type="datetime-local"
+                                          value="${escapeHtml(toDateTimeLocalValue(item.takenAt || item.uploadedAt || item.createdAt || ""))}"
+                                          data-stage-index="${item.stageIndex}"
+                                          data-entry-id="${escapeHtml(String(item.entryId || ""))}"
+                                          data-media-id="${escapeHtml(String(item.mediaId || ""))}"
+                                          data-photo-index="${item.photoIndex}"
+                                          onchange="updateSavedDiaryPhotoTakenAtFromInput(this)"
+                                        >
+                                      </label>
+                                      <button
+                                        class="linkbtn stopbtn"
+                                        type="button"
+                                        data-stage-index="${item.stageIndex}"
+                                        data-entry-id="${escapeHtml(String(item.entryId || ""))}"
+                                        data-media-id="${escapeHtml(String(item.mediaId || ""))}"
+                                        data-photo-index="${item.photoIndex}"
+                                        data-storage-path="${escapeHtml(String(item.storagePath || ""))}"
+                                        onclick="deleteSavedDiaryPhotoFromButton(this)"
+                                      >
+                                        Foto verwijderen
+                                      </button>
+                                    </div>`
+                                  : ""
+                              }
                             </figure>
                           `
                         )
@@ -4411,18 +4561,44 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
                     ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
                     ${
                       canManageSavedDiaryPhotos()
-                        ? `<button
-                            class="linkbtn panorama-mark"
-                            type="button"
-                            data-stage-index="${stageIndex}"
-                            data-entry-id="${escapeHtml(String(entry.id))}"
-                            data-media-id="${escapeHtml(String(photo.mediaId || ""))}"
-                            data-photo-index="${photoIndex}"
-                            data-projection="${isPanoramaPhoto(photo) ? "flat" : "equirectangular"}"
-                            onclick="setSavedDiaryPhotoProjectionFromButton(this)"
-                          >
-                            ${isPanoramaPhoto(photo) ? "Toon als gewone foto" : "Markeer als 360°-foto"}
-                          </button>`
+                        ? `<div class="diary-photo-tools">
+                            <label>
+                              Opnamedatum
+                              <input
+                                type="datetime-local"
+                                value="${escapeHtml(toDateTimeLocalValue(getDiaryPhotoTakenAt(photo) || photo.uploadedAt || entry.createdAt || ""))}"
+                                data-stage-index="${stageIndex}"
+                                data-entry-id="${escapeHtml(String(entry.id))}"
+                                data-media-id="${escapeHtml(String(photo.mediaId || ""))}"
+                                data-photo-index="${photoIndex}"
+                                onchange="updateSavedDiaryPhotoTakenAtFromInput(this)"
+                              >
+                            </label>
+                            <button
+                              class="linkbtn panorama-mark"
+                              type="button"
+                              data-stage-index="${stageIndex}"
+                              data-entry-id="${escapeHtml(String(entry.id))}"
+                              data-media-id="${escapeHtml(String(photo.mediaId || ""))}"
+                              data-photo-index="${photoIndex}"
+                              data-projection="${isPanoramaPhoto(photo) ? "flat" : "equirectangular"}"
+                              onclick="setSavedDiaryPhotoProjectionFromButton(this)"
+                            >
+                              ${isPanoramaPhoto(photo) ? "Toon als gewone foto" : "Markeer als 360°-foto"}
+                            </button>
+                            <button
+                              class="linkbtn stopbtn"
+                              type="button"
+                              data-stage-index="${stageIndex}"
+                              data-entry-id="${escapeHtml(String(entry.id))}"
+                              data-media-id="${escapeHtml(String(photo.mediaId || ""))}"
+                              data-photo-index="${photoIndex}"
+                              data-storage-path="${escapeHtml(String(photo.storagePath || ""))}"
+                              onclick="deleteSavedDiaryPhotoFromButton(this)"
+                            >
+                              Foto verwijderen
+                            </button>
+                          </div>`
                         : ""
                     }
                   </figure>
@@ -4470,7 +4646,6 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
     </div>
   `;
 }
-
 function renderDiaryPanel() {
   const panel = document.getElementById("diaryPanel");
   if (!panel) return;
@@ -4736,11 +4911,11 @@ function getFuelAdvice(stage) {
   const tankStop = stage.route[1] || stage.from;
   const crossesGermanyDenmarkSweden =
     /germany|duitsland|hamburg/.test(routeText) &&
-    /denmark|denemarken|kolding|great belt|grote belt|oresund|øresund/.test(routeText) &&
+    /denmark|denemarken|kolding|great belt|grote belt|oresund|Ã¸resund/.test(routeText) &&
     /sweden|zweden|malmo|gothenburg|goteborg/.test(routeText);
   const fromSwedenToDenmarkGermany =
     /sweden|zweden|malmo|gothenburg|goteborg|karlstad/.test(routeText) &&
-    /denmark|denemarken|great belt|grote belt|oresund|øresund/.test(routeText) &&
+    /denmark|denemarken|great belt|grote belt|oresund|Ã¸resund/.test(routeText) &&
     /germany|duitsland|hamburg/.test(routeText);
   const isNorway = /norway|noorwegen|fjord|bergen|trondheim|lofoten|geiranger|alesund|bodo|oslo|geilo|haugastol|eidfjord|aurland|olden|loen|andalsnes/.test(routeText);
 
@@ -5169,8 +5344,8 @@ function renderFuelPriceLookup(fuelAdvice) {
               .map(
                 (station, index) => `
                   <a class="fuel-result ${getFuelPriceClass(station, index, state.stations)}" target="_blank" href="${station.mapsUrl || getFuelSearchUrl({ search: `${station.name} ${station.place || ""}` })}">
-                    <b>${station.price ? `€${Number(station.price).toFixed(3)}` : "Prijs onbekend"} · ${station.name || station.brand || "Tankstation"}</b>
-                    <span>${station.place || station.address || ""}${station.distanceKm ? ` · ${station.distanceKm} km` : ""}${station.isOpen === false ? " · gesloten" : ""}</span>
+                    <b>${station.price ? `â‚¬${Number(station.price).toFixed(3)}` : "Prijs onbekend"} Â· ${station.name || station.brand || "Tankstation"}</b>
+                    <span>${station.place || station.address || ""}${station.distanceKm ? ` Â· ${station.distanceKm} km` : ""}${station.isOpen === false ? " Â· gesloten" : ""}</span>
                   </a>
                 `
               )
