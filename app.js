@@ -1542,6 +1542,11 @@ function canEditDiary() {
   return canAddDiaryMedia();
 }
 
+function canManageSavedDiaryPhotos() {
+  const role = getActualRole();
+  return role === "admin" || role === "leader" || role === "traveler";
+}
+
 function canMarkVisited() {
   const role = getCurrentRole();
   return role === "admin" || role === "leader" || role === "traveler";
@@ -1741,6 +1746,33 @@ function getStageDiaryKey(index) {
   return `reisapp_stage_diary_${index}`;
 }
 
+function getPhotoProjectionOverrideKey(photo) {
+  const item = photo || {};
+  return item.mediaId || item.storagePath || "";
+}
+
+function getPhotoProjectionOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem("reisapp_photo_projection_overrides") || "{}");
+  } catch (_error) {
+    return {};
+  }
+}
+
+function setPhotoProjectionOverride(key, projection) {
+  if (!key) return;
+  const overrides = getPhotoProjectionOverrides();
+  overrides[key] = projection === "equirectangular" ? "equirectangular" : "flat";
+  localStorage.setItem("reisapp_photo_projection_overrides", JSON.stringify(overrides));
+}
+
+function applyPhotoProjectionOverride(photo) {
+  const key = getPhotoProjectionOverrideKey(photo);
+  if (!key) return photo;
+  const projection = getPhotoProjectionOverrides()[key];
+  return projection ? { ...photo, projection } : photo;
+}
+
 function getStageDiary(index) {
   if (isCloudMode() && remoteTrip) {
     return remoteDiaryEntries
@@ -1763,9 +1795,9 @@ function getStageDiary(index) {
             }),
           }));
         const photos = photoMedia
-          .map((item) =>
-            item.url
-              ? {
+          .map((item) => {
+            if (!item.url) return null;
+            return applyPhotoProjectionOverride({
                   src: item.url,
                   caption: item.caption || "",
                   takenAt: item.taken_at || "",
@@ -1776,9 +1808,8 @@ function getStageDiary(index) {
                       : "flat",
                   mediaId: item.id,
                   storagePath: item.storage_path || "",
-                }
-              : null
-          )
+                });
+          })
           .filter(Boolean);
         return {
           id: entry.id,
@@ -2408,8 +2439,20 @@ function toggleDiaryPhotoProjection(index) {
 }
 
 async function setSavedDiaryPhotoProjection(stageIndex, entryId, mediaId, photoIndex, projection) {
-  if (!canAddDiaryMedia()) return;
+  if (!canManageSavedDiaryPhotos()) return;
   const nextProjection = projection === "equirectangular" ? "equirectangular" : "flat";
+  const entry = getStageDiary(stageIndex).find((item) => String(item.id) === String(entryId));
+  const photo = entry ? getDiaryPhotoItems(entry)[photoIndex] : null;
+  const overrideKey = mediaId || getPhotoProjectionOverrideKey(photo);
+  setPhotoProjectionOverride(overrideKey, nextProjection);
+
+  authMessage =
+    nextProjection === "equirectangular"
+      ? "Foto wordt voortaan als interactieve 360-foto getoond."
+      : "Foto wordt voortaan als gewone foto getoond.";
+  renderStages();
+  renderDiaryPanel();
+  renderDashboardOnly();
 
   if (isCloudMode() && remoteTrip && authUser && mediaId) {
     const { error } = await supabaseClient
@@ -2419,7 +2462,7 @@ async function setSavedDiaryPhotoProjection(stageIndex, entryId, mediaId, photoI
 
     if (error) {
       authMessage = /projection|schema cache|policy|permission/i.test(error.message || "")
-        ? "360-markering is nog niet actief in Supabase. Voer de migratie voor bestaande 360-foto's uit."
+        ? "360-markering is alleen op dit apparaat aangepast. Voer de 360-fotomigratie uit om dit centraal op te slaan."
         : error.message;
     } else {
       authMessage =
@@ -4367,7 +4410,7 @@ function renderDiaryEntryContent(entry, stageIndex, allowEdit = false) {
                     ${renderDiaryPhotoVisual(photo, isPanoramaPhoto(photo) ? "360-dagboekfoto" : "Dagboekfoto")}
                     ${photo.caption ? `<figcaption>${escapeHtml(photo.caption)}</figcaption>` : ""}
                     ${
-                      canAddDiaryMedia()
+                      canManageSavedDiaryPhotos()
                         ? `<button
                             class="linkbtn panorama-mark"
                             type="button"

@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v77-panorama-blob-loader";
+const CACHE_NAME = "rondreis-noorwegen-2026-v78-panorama-mark-fix";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260727-panorama-blob-loader",
-  "./app.js?v=20260727-panorama-blob-loader",
+  "./style.css?v=20260728-panorama-mark-fix",
+  "./app.js?v=20260728-panorama-mark-fix",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260727-panorama-blob-loader",
+  "./data/stages.js?v=20260728-panorama-mark-fix",
   "./data/app-config.public.js",
   "./assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline",
   "./assets/images/scandinavia-map-hero.png",
