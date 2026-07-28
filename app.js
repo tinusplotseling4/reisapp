@@ -1551,7 +1551,7 @@ function canEditDiary() {
 }
 
 function canManageSavedDiaryPhotos() {
-  const role = getActualRole();
+  const role = getCurrentRole();
   return role === "admin" || role === "leader" || role === "traveler";
 }
 

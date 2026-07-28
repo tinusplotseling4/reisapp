@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v81-gallery-picker";
+const CACHE_NAME = "rondreis-noorwegen-2026-v82-follower-photo-lock";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260728-gallery-picker",
-  "./app.js?v=20260728-gallery-picker",
+  "./style.css?v=20260728-follower-photo-lock",
+  "./app.js?v=20260728-follower-photo-lock",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260728-gallery-picker",
+  "./data/stages.js?v=20260728-follower-photo-lock",
   "./data/app-config.public.js",
   "./assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline",
   "./assets/images/scandinavia-map-hero.png",
