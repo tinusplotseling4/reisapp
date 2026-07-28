@@ -2043,6 +2043,64 @@ function openDiaryPhotoInput(mode) {
   document.getElementById(inputId)?.click();
 }
 
+async function openDiaryDevicePhotoPicker(mode = "photos") {
+  diaryDraft.mode = mode;
+  const projection = mode === "panorama" ? "equirectangular" : "flat";
+  const multiple = mode !== "panorama";
+
+  if (window.showOpenFilePicker) {
+    try {
+      const handles = await window.showOpenFilePicker({
+        multiple,
+        excludeAcceptAllOption: false,
+        types: [
+          {
+            description: "Afbeeldingen",
+            accept: {
+              "image/*": [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"],
+            },
+          },
+        ],
+      });
+      const files = await Promise.all(handles.map((handle) => handle.getFile()));
+      await handleDiaryPhotos({ files, value: "" }, projection);
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+
+  openDiaryPhotoInput(mode);
+}
+
+async function openDiaryArchivePhotoPicker() {
+  if (!canAddDiaryMedia() || diaryArchiveUploadState.loading) return;
+
+  if (window.showOpenFilePicker) {
+    try {
+      const handles = await window.showOpenFilePicker({
+        multiple: true,
+        excludeAcceptAllOption: false,
+        types: [
+          {
+            description: "Afbeeldingen",
+            accept: {
+              "image/*": [".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"],
+            },
+          },
+        ],
+      });
+      const files = await Promise.all(handles.map((handle) => handle.getFile()));
+      await handleDiaryArchivePhotos({ files, value: "" });
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+  }
+
+  document.getElementById("diaryArchivePhotosInput")?.click();
+}
+
 function updateDiaryDraftNote(value) {
   diaryDraft.note = value;
 }
@@ -3084,8 +3142,8 @@ function renderDiaryComposer(stageIndex) {
         ${
           canAddDiaryMedia()
             ? `<button class="linkbtn ${diaryDraft.mode === "camera" ? "primary" : ""}" onclick="openDiaryPhotoInput('camera')">Foto maken</button>
-               <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryPhotoInput('photos')">Foto's kiezen</button>
-               <button class="linkbtn panorama-select ${diaryDraft.mode === "panorama" ? "primary" : ""}" onclick="openDiaryPhotoInput('panorama')">360Â°-foto kiezen</button>`
+               <button class="linkbtn ${diaryDraft.mode === "photos" ? "primary" : ""}" onclick="openDiaryDevicePhotoPicker('photos')">Galerij / bestanden</button>
+               <button class="linkbtn panorama-select ${diaryDraft.mode === "panorama" ? "primary" : ""}" onclick="openDiaryDevicePhotoPicker('panorama')">360Â°-foto kiezen</button>`
             : ""
         }
         <button class="linkbtn ${diaryDraft.mode === "text" ? "primary" : ""}" onclick="setDiaryMode('text')">Tekst</button>
@@ -4757,7 +4815,7 @@ function renderDiaryPanel() {
               <button
                 class="linkbtn primary"
                 type="button"
-                onclick="document.getElementById('diaryArchivePhotosInput')?.click()"
+                onclick="openDiaryArchivePhotoPicker()"
                 ${diaryArchiveUploadState.loading ? "disabled" : ""}
               >
                 ${diaryArchiveUploadState.loading ? "Foto's indelen..." : "Foto's op datum toevoegen"}
