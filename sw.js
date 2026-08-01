@@ -1,11 +1,11 @@
-const CACHE_NAME = "rondreis-noorwegen-2026-v83-photo-likes";
+const CACHE_NAME = "rondreis-noorwegen-2026-v84-egress-photo-compress";
 const APP_SHELL = [
   "./",
   "./index.html",
-  "./style.css?v=20260728-photo-likes",
-  "./app.js?v=20260728-photo-likes",
+  "./style.css?v=20260801-egress-photo-compress",
+  "./app.js?v=20260801-egress-photo-compress",
   "./manifest.webmanifest",
-  "./data/stages.js?v=20260728-photo-likes",
+  "./data/stages.js?v=20260801-egress-photo-compress",
   "./data/app-config.public.js",
   "./assets/vendor/supabase/supabase.min.js?v=20260724-lotte-offline",
   "./assets/images/scandinavia-map-hero.png",

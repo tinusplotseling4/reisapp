@@ -152,6 +152,9 @@ let diaryArchiveUploadState = {
 };
 let travelPhotoDedupTimer = null;
 let openDiaryDays = new Set();
+const DIARY_PHOTO_MAX_EDGE = 1600;
+const DIARY_PHOTO_OPTIMIZE_MIN_SIZE = 900 * 1024;
+const DIARY_PHOTO_JPEG_QUALITY = 0.82;
 
 function getConfig() {
   return window.REISAPP_CONFIG || {};
@@ -2270,11 +2273,47 @@ function loadDiaryImage(src) {
 function canvasToJpegBlob(canvas, quality = 0.88) {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("De 360-foto kon niet worden verkleind."))),
+      (blob) => (blob ? resolve(blob) : reject(new Error("De foto kon niet worden verkleind."))),
       "image/jpeg",
       quality
     );
   });
+}
+
+async function resizeImageFile(file, maxEdge, quality, suffix = "web") {
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = await loadDiaryImage(sourceUrl);
+    const edge = Math.max(image.naturalWidth, image.naturalHeight);
+    if (edge <= maxEdge && file.size <= DIARY_PHOTO_OPTIMIZE_MIN_SIZE) return { file, image };
+
+    const scale = Math.min(1, maxEdge / Math.max(1, edge));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Deze telefoon kan de foto niet voorbereiden.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const optimizedBlob = await canvasToJpegBlob(canvas, quality);
+    if (optimizedBlob.size >= file.size && edge <= maxEdge) return { file, image };
+
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "foto";
+    const optimizedFile = new File([optimizedBlob], `${baseName}-${suffix}.jpg`, {
+      type: "image/jpeg",
+      lastModified: file.lastModified || Date.now(),
+    });
+    const optimizedUrl = URL.createObjectURL(optimizedFile);
+    let optimizedImage;
+    try {
+      optimizedImage = await loadDiaryImage(optimizedUrl);
+    } finally {
+      URL.revokeObjectURL(optimizedUrl);
+    }
+    return { file: optimizedFile, image: optimizedImage };
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
 }
 
 async function readDiaryPhotoTakenAt(file) {
@@ -2421,6 +2460,16 @@ async function prepareDiaryPhoto(file, projection = "flat", takenAt = "") {
       image = await loadDiaryImage(previewUrl);
     }
 
+    if (projection !== "equirectangular") {
+      const optimized = await resizeImageFile(file, DIARY_PHOTO_MAX_EDGE, DIARY_PHOTO_JPEG_QUALITY, "reisapp");
+      if (optimized.file !== file) {
+        uploadFile = optimized.file;
+        image = optimized.image;
+        URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(uploadFile);
+      }
+    }
+
     return {
       src: previewUrl,
       file: uploadFile,
@@ -2469,14 +2518,15 @@ async function handleDiaryArchivePhotos(input) {
           continue;
         }
 
+        const optimized = await resizeImageFile(file, DIARY_PHOTO_MAX_EDGE, DIARY_PHOTO_JPEG_QUALITY, "reisapp");
         const photo = {
           src: "",
-          file,
+          file: optimized.file,
           caption: "",
           takenAt,
           projection: "flat",
-          width: 0,
-          height: 0,
+          width: optimized.image?.naturalWidth || 0,
+          height: optimized.image?.naturalHeight || 0,
           fileName: file.name || "",
           fileSize: file.size || 0,
           fileLastModified: file.lastModified || 0,
@@ -4270,7 +4320,7 @@ function renderStageDots() {
 function renderDiaryPhotoVisual(photo, alt) {
   const item = normalizeDiaryPhoto(photo);
   if (!isPanoramaPhoto(item)) {
-    return `<img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}">`;
+    return `<img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">`;
   }
 
   return `
@@ -4282,7 +4332,7 @@ function renderDiaryPhotoVisual(photo, alt) {
       onclick="openPanoramaFromButton(this)"
       aria-label="Open 360-foto"
     >
-      <img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}">
+      <img src="${escapeHtml(item.src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async">
       <span class="panorama-badge">360Â°</span>
       <span class="panorama-open-label">Open 360Â°</span>
     </button>
